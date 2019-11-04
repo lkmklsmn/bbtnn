@@ -1,0 +1,12 @@
+sklearn
+scanpy
+anndata
+bbknn
+pandas
+seaborn
+matplotlib
+dca
+tensorflow
+numpy
+ivis
+scipy
