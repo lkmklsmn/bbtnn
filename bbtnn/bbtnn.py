@@ -60,24 +60,24 @@ class KnnTripletGenerator(Sequence):
         negative = int(np.random.randint(0, neighbour_matrix.shape[0], 1))
         triplets += [self.X[anchor], self.X[positive], self.X[negative]]
         return triplets
-                                          
 
-def generator_from_index(X, batch, k = 5, batch_size = 16, search_k=-1, verbose=1):
+
+def generator_from_index(X, batch, k = 5, batch_size = batch_size, search_k=-1, verbose=1):
         if k >= X.shape[0] - 1:
                 raise Exception('''k value greater than or equal to (num_rows - 1)(k={}, rows={}). Lower k to a smaller value.'''.format(k, X.shape[0]))
 
         if batch_size > X.shape[0]:
                 raise Exception('''batch_size value larger than num_rows in dataset (batch_size={}, rows={}). Lower batch_size to a smaller value.'''.format(batch_size, X.shape[0]))
 
-        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch, neighbors_within_batch=3, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=10)
-        
+        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch, neighbors_within_batch=k, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=10)
+
         neighbour_matrix = knn_indices
         return KnnTripletGenerator(X = X, batch = batch, neighbour_matrix = neighbour_matrix, batch_size=batch_size)
 
 
 class Ivis(BaseEstimator):
-    def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=128,
-                 epochs=1000, n_epochs_without_progress=50,
+    def __init__(self, embedding_dims=2, k=20, distance='pn', batch_size=32,
+                 epochs=100, n_epochs_without_progress=5,
                  margin=1, ntrees=50, search_k=-1,
                  model='default',
                  callbacks=[], eager_execution=False, verbose=1):
@@ -215,8 +215,3 @@ class Ivis(BaseEstimator):
 
         embedding = self.encoder.predict(X, verbose=self.verbose)
         return embedding
-
-
- 
-
-
