@@ -1,4 +1,5 @@
 # bbtnn
+**b**atch **b**alanced **t**riplet **n**eural **n**etwork
 
 Environment:Python
 bbtnn's latest version: http://github.com/lkmklsmn/bbtnn....
