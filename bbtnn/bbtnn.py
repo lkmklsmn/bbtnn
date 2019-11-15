@@ -1,11 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import tensorflow as tf
+import io
+import numpy as np
+import json
+import os
+import shutil
+import multiprocessing
+import bbknn
 from ivis.nn.losses import triplet_loss, is_categorical, is_multiclass, is_hinge
 from ivis.nn.network import triplet_network, base_network
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, AlphaDropout, Lambda
-from tensorflow.keras import backend as K
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras import backend as K
 from tensorflow import keras
@@ -15,21 +22,9 @@ from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras import regularizers
 from tensorflow.keras.utils import Sequence
-import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.base import BaseEstimator
-import io
-import numpy as np
-import json
-import os
-import shutil
-import multiprocessing
 from scipy.sparse import issparse
-import bbknn
-from tensorflow.keras import backend as K
-import tensorflow as tf
-from ivis import Ivis
-from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
 
 
@@ -48,7 +43,7 @@ class KnnTripletGenerator(Sequence):
     def __getitem__(self, idx):
         batch_indices = range(idx * self.batch_size, min((idx + 1) * self.batch_size, self.X.shape[0]))
         placeholder_labels = self.placeholder_labels[:len(batch_indices)]
-        triplet_batch = [self.knn_triplet_from_neighbour_list(row_index, neighbour_matrix) for row_index in batch_indices]
+        triplet_batch = [self.knn_triplet_from_neighbour_list(row_index, self.neighbour_matrix) for row_index in batch_indices]
 
         triplet_batch = np.array(triplet_batch)
 
@@ -58,8 +53,8 @@ class KnnTripletGenerator(Sequence):
         """ A random (unweighted) positive example chosen. """
         triplets = []
         anchor = row_index
-        positive = int(neighbour_matrix[row_index, np.random.randint(0, neighbour_matrix.shape[1], 1)])
-        negative = int(np.random.randint(0, neighbour_matrix.shape[0], 1))
+        positive = int(self.neighbour_matrix[row_index, np.random.randint(0, self.neighbour_matrix.shape[1], 1)])
+        negative = int(np.random.randint(0, self.neighbour_matrix.shape[0], 1))
         triplets += [self.X[anchor], self.X[positive], self.X[negative]]
         return triplets
 
@@ -109,15 +104,14 @@ class LabeledKnnTripletGenerator(Sequence):
         return triplets
 
 
-def generator_from_index(X, Y, batch, k = 5, batch_size = 16, search_k=-1, verbose=1):
+def generator_from_index(X, Y, batch, neighbour_matrix, k = 5, batch_size = 16, search_k=-1, verbose=1):
         if k >= X.shape[0] - 1:
                 raise Exception('''k value greater than or equal to (num_rows - 1)(k={}, rows={}). Lower k to a smaller value.'''.format(k, X.shape[0]))
 
         if batch_size > X.shape[0]:
                 raise Exception('''batch_size value larger than num_rows in dataset (batch_size={}, rows={}). Lower batch_size to a smaller value.'''.format(batch_size, X.shape[0]))
 
-        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch, neighbors_within_batch=3, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=10)
-        neighbour_matrix = knn_indices
+        #knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch, neighbors_within_batch=3, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=10)
 
         if Y is None:
             return KnnTripletGenerator(X = X, batch = batch, neighbour_matrix = neighbour_matrix, batch_size=batch_size)
@@ -127,7 +121,7 @@ def generator_from_index(X, Y, batch, k = 5, batch_size = 16, search_k=-1, verbo
 
 
 class BBTNN(BaseEstimator):
-    def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=128, batch=2,
+    def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=128, batch=2, neighbour_matrix=22,
                  epochs=1000, n_epochs_without_progress=50,
                  margin=1, ntrees=50, search_k=-1,
                  model='default',supervision_metric='sparse_categorical_crossentropy',
@@ -138,6 +132,8 @@ class BBTNN(BaseEstimator):
         self.k = k
         self.distance = distance
         self.batch_size = batch_size
+        self.batch = batch
+        self.neighbour_matrix=neighbour_matrix
         self.epochs = epochs
         self.n_epochs_without_progress = n_epochs_without_progress
         self.margin = margin
@@ -174,9 +170,10 @@ class BBTNN(BaseEstimator):
             state['model_def'] = None
         return state
 
-    def _fit(self, batch, X, Y=None, shuffle_mode=True):
+    def _fit(self, X, Y=None, shuffle_mode=True):
 
-        datagen = generator_from_index(X, Y, batch=batch,
+
+        datagen = generator_from_index(X, Y, batch=self.batch, neighbour_matrix=self.neighbour_matrix,
                                        k=self.k,
                                        batch_size=self.batch_size,
                                        search_k=self.search_k,
@@ -281,7 +278,7 @@ class BBTNN(BaseEstimator):
                       [EarlyStopping(monitor=loss_monitor,
                        patience=self.n_epochs_without_progress)],
             shuffle=shuffle_mode,
-            workers=multiprocessing.cpu_count(),
+            workers = 10,
             verbose=self.verbose)
         self.loss_history_ += hist.history['loss']
 
@@ -362,6 +359,7 @@ class BBTNN(BaseEstimator):
         softmax_output = self.supervised_model_.predict(X, verbose=self.verbose)
         return softmax_output
 
+
 def semi_supervised_loss(loss_function):
     def new_loss_function(y_true, y_pred):
         mask = tf.cast(~tf.math.equal(y_true, -1), tf.float32)
@@ -391,8 +389,10 @@ def consecutive_indexed(Y):
         return False
     return True
 
+
 def unsupervised_bbtnn(
-    pca,
+    X,
+    Y,
     batch,
     neighbors_within_batch=5,
     n_pcs=20,
@@ -408,8 +408,8 @@ def unsupervised_bbtnn(
     epochs=100,
     n_epochs_without_progress=5):
 
-    knn_distances, knn_indices=bbknn.get_graph(pca=pca, batch_list = batch, neighbors_within_batch=neighbors_within_batch, n_pcs=n_pcs, approx=approx, metric=metric, use_faiss=use_faiss, n_trees=n_trees)
-    neighbour_matrix = knn_indices
-    bbtnn_model = BBTNN(model=model, verbose=verbose, k=k, distance=distance, batch_size=batch_size, batch=batch, epochs=epochs, n_epochs_without_progress=n_epochs_without_progress)
-    embeddings = bbtnn_model.fit_transform(pca, None)
+    knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch, neighbors_within_batch=neighbors_within_batch, n_pcs=n_pcs, approx=True, metric=metric, use_faiss=use_faiss, n_trees=n_trees)
+    neighbour_matrix = knn_indices     
+    bbtnn_model = BBTNN(model=model, verbose=verbose, k=k, distance=distance,  batch_size=batch_size, batch=batch, neighbour_matrix=neighbour_matrix, epochs=epochs, n_epochs_without_progress=n_epochs_without_progress)
+    embeddings = bbtnn_model.fit_transform(X=X, Y=Y)
     return(embeddings)
