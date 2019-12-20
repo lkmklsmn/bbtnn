@@ -3,10 +3,6 @@
 # bbtnn
 **b**atch **b**alanced **t**riplet **n**eural **n**etwork
 
-Environment: Python
-
-
-# Usage
 The bbtnn package is implementation of batch correction and deep embedding for scRNA-seq. With bbtnn, you can:
 
 * Integrate scRNA-seq datasets across batches with/without labels.
