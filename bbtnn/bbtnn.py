@@ -153,7 +153,7 @@ class KnnTripletGenerator(Sequence):
 
     def __init__(self, X, neighbour_matrix, batch_size=32):
         self.X = X
-        self.batch = batch
+        #self.batch = batch
         self.neighbour_matrix = neighbour_matrix
         self.batch_size = batch_size
         self.placeholder_labels = np.empty(batch_size, dtype=np.uint8)
@@ -204,7 +204,7 @@ class LabeledKnnTripletGenerator(Sequence):
 
     def __init__(self, X, Y, neighbour_matrix, batch_size=32):
         self.X, self.Y = X, Y
-        self.batch = batch
+        #self.batch = batch
         self.neighbour_matrix = neighbour_matrix
         self.batch_size = batch_size
 
