@@ -3,9 +3,7 @@
 # bbtnn
 **b**atch **b**alanced **t**riplet **n**eural **n**etwork
 
-Environment:Python
-
-bbtnn's latest version: http://github.com/lkmklsmn/bbtnn....
+Environment: Python
 
 
 # Usage
@@ -27,7 +25,6 @@ Directly install the package from Pypi.
 
 ```alias
 $ pip install bbtnn
-
 ```
 
 ### Github
@@ -37,8 +34,7 @@ Download the package from Github and install it locally:
 ```alias
 git clone http://github.com/lkmklsmn/bbtnn
 cd bbtnn
-pip install
-
+pip install .
 ```
 
 ### Anaconda
