@@ -1,4 +1,4 @@
-![bbtnn](https://raw.githubusercontent.com/lkmklsmn/bbtnn/master/examples/test1.png)
+![bbtnn](https://github.com/lkmklsmn/bbtnn/blob/master/examples/test1.png)
 
 # bbtnn
 **b**atch **b**alanced **t**riplet **n**eural **n**etwork
