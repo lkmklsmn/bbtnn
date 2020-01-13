@@ -60,7 +60,7 @@ sc.set_figure_params(dpi_save = 300, vector_friendly = True)
 '''
 
 
-def triplet_network(base_network, embedding_dims=2, embedding_l1=0.000, embedding_l2=0.01):
+def triplet_network(base_network, embedding_dims=2, embedding_l1=0.01, embedding_l2=0.01):
     def output_shape(shapes):
         shape1, shape2, shape3 = shapes
         return (3, shape1[0],)
@@ -252,8 +252,6 @@ def generator_from_index(X, Y, k = 15, batch_size = 128, batch_list = 4, search_
             return KnnTripletGenerator(X = X,  neighbour_matrix = neighbour_matrix, batch_size=batch_size)
         else:
             return LabeledKnnTripletGenerator(X = X, Y = Y,  neighbour_matrix = neighbour_matrix, batch_size=batch_size)
-
-
 
 
 class BBTNN(BaseEstimator):
