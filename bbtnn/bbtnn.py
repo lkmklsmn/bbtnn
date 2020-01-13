@@ -43,7 +43,7 @@ from sklearn import metrics
 import time
 from datetime import timedelta
 
-
+'''
 ## setting GPU No. for training
 os.environ["CUDA_VISIBLE_DEVICES"] = '2' #use GPU with ID=0
 config = tf.compat.v1.ConfigProto()
@@ -56,10 +56,8 @@ sess = tf.compat.v1.Session(config = config)
 cpu_config = tf.compat.v1.ConfigProto(intra_op_parallelism_threads = 20, inter_op_parallelism_threads = 20, device_count = {'CPU': 20})
 #with tf.Session(config = cpu_config) as sess
 sess = tf.compat.v1.Session(config = cpu_config)
-
-
 sc.set_figure_params(dpi_save = 300, vector_friendly = True)
-
+'''
 
 
 def triplet_network(base_network, embedding_dims=2, embedding_l1=0.000, embedding_l2=0.01):
@@ -250,13 +248,14 @@ def generator_from_index(X, Y, k = 15, batch_size = 128, batch_list = 4, search_
         if batch_size > X.shape[0]:
                 raise Exception('''batch_size value larger than num_rows in dataset (batch_size={}, rows={}). Lower batch_size to a smaller value.'''.format(batch_size, X.shape[0]))
         
-        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch_list, neighbors_within_batch=k, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=50)
-        neighbour_matrix = knn_indices
+        
        
         if Y is None:
             return KnnTripletGenerator(X = X,  neighbour_matrix = neighbour_matrix, batch_size=batch_size)
         else:
             return LabeledKnnTripletGenerator(X = X, Y = Y,  neighbour_matrix = neighbour_matrix, batch_size=batch_size)
+
+
 
 
 class BBTNN(BaseEstimator):
@@ -309,7 +308,8 @@ class BBTNN(BaseEstimator):
         return state
 
     def _fit(self, X, Y=None, shuffle_mode=True):
-
+        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = batch_list, neighbors_within_batch=k, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=50)
+        neighbour_matrix = knn_indices
         datagen = generator_from_index(X, Y,
                                        k=self.k,
                                        batch_size=self.batch_size,
