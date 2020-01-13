@@ -306,8 +306,7 @@ class BBTNN(BaseEstimator):
         return state
 
     def _fit(self, X, Y=None, shuffle_mode=True):
-        knn_distances, knn_indices=bbknn.get_graph(pca=X, batch_list = self.batch_list, neighbors_within_batch=self.k, n_pcs=50, approx=True, metric="euclidean", use_faiss=True, n_trees=50)
-        neighbour_matrix = knn_indices
+        
         datagen = generator_from_index(X, Y,
                                        k=self.k,
                                        batch_size=self.batch_size,
