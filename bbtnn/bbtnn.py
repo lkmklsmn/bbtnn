@@ -248,8 +248,6 @@ def generator_from_index(X, Y, k = 15, batch_size = 128, batch_list = 4, search_
         if batch_size > X.shape[0]:
                 raise Exception('''batch_size value larger than num_rows in dataset (batch_size={}, rows={}). Lower batch_size to a smaller value.'''.format(batch_size, X.shape[0]))
         
-        
-       
         if Y is None:
             return KnnTripletGenerator(X = X,  neighbour_matrix = neighbour_matrix, batch_size=batch_size)
         else:
