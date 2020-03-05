@@ -1,3 +1,4 @@
 
 examples/.ipynb_checkpoints/Untitled-checkpoint.ipynb
 examples/annoy.index
+*.h5
