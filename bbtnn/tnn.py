@@ -12,10 +12,9 @@ from tensorflow.keras import regularizers
 from tensorflow.keras.utils import Sequence
 
 import random
-from ivis.nn.losses import triplet_loss, is_categorical, is_multiclass, is_hinge
+from ivis.nn.losses import *
 from ivis.nn.network import triplet_network, base_network
 from ivis.nn.callbacks import ModelCheckpoint
-from ivis.nn.losses import semi_supervised_loss, validate_sparse_labels
 
 from scipy.sparse import issparse
 from scipy.spatial import cKDTree

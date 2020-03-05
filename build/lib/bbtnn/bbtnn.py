@@ -4,7 +4,10 @@
 import bbknn
 import numpy as np
 import scanpy as sc
+import pandas as pd
+
 from tensorflow import keras
+import tensorflow as tf
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Input, Dense, AlphaDropout, Lambda
 from tensorflow.keras.regularizers import l2, l1_l2
@@ -12,24 +15,22 @@ from tensorflow.keras.callbacks import Callback, EarlyStopping
 from tensorflow.keras import backend as K
 from tensorflow.keras import regularizers
 from tensorflow.keras.utils import Sequence
-from ivis.nn.losses import triplet_loss, is_categorical, is_multiclass, is_hinge
-import pandas as pd
-import sys
-from scipy.spatial import cKDTree
-import random
+
 from sklearn.base import BaseEstimator
 from ivis.nn.network import triplet_network
 from ivis.nn.callbacks import ModelCheckpoint
-from ivis.nn.losses import triplet_loss, is_categorical, is_multiclass, is_hinge
-from ivis.nn.losses import semi_supervised_loss, validate_sparse_labels
-import numpy as np
+from ivis.nn.losses import *
+
+from scipy.spatial import cKDTree
 from scipy.sparse import issparse
 from sklearn.base import BaseEstimator
+
+import sys
+import random
 import json
 import os
 import shutil
 import multiprocessing
-import tensorflow as tf
 import platform
 
 def base_network(input_shape):
@@ -46,13 +47,10 @@ def base_network(input_shape):
     x = Dense(n_dim, activation='selu', kernel_initializer='lecun_normal')(x)
     return Model(inputs, x)
 
-def extract_knn(X, batch_list, k, verbose = True):
-    if verbose:
-        print("Calculating KNN graph")
-
+def extract_knn(X, batch_list, k):
     knn_distances, knn_indices = bbknn.get_graph(
                 pca = X, batch_list = batch_list,
-                neighbors_within_batch = k, n_pcs = X.shape[1],
+                neighbors_within_batch = k, n_pcs = 50,
                 approx = True, metric = "euclidean", use_faiss = False, n_trees = 100)
 
     return(knn_indices)
@@ -68,7 +66,9 @@ def generator_from_index(X, batch_list, k, batch_size, search_k=-1,
                         (batch_size={}, rows={}). Lower batch_size to a
                         smaller value.'''.format(batch_size, X.shape[0]))
 
-    neighbour_matrix = extract_knn(X = X, batch_list = batch_list, k = k)
+    print("Calculate batch-balanced KNN")
+
+    neighbour_matrix = extract_knn(X = X, batch_list = batch_list, k=k)
 
     indices_by_batch = []
     names_indices_by_batch = []
@@ -84,11 +84,12 @@ def generator_from_index(X, batch_list, k, batch_size, search_k=-1,
 
 class KnnTripletGenerator(Sequence):
 
-    def __init__(self, X, neighbour_matrix, batch_list, batch_size=32):
+    def __init__(self, X, neighbour_matrix, batch_list, indices_by_batch, batch_size=32):
         self.X = X
         self.neighbour_matrix = neighbour_matrix
         self.batch_size = batch_size
         self.batch_list = batch_list
+        self.indices_by_batch = indices_by_batch
         self.placeholder_labels = np.empty(batch_size, dtype=np.uint8)
 
     def __len__(self):
@@ -121,6 +122,7 @@ class KnnTripletGenerator(Sequence):
         triplets += [self.X[row_index], self.X[neighbour_ind],
                      self.X[negative_ind]]
         return triplets
+
 
 class BBTNN(BaseEstimator):
     """Ivis is a technique that uses an artificial neural network for
