@@ -2,6 +2,8 @@ import numpy as np
 import scanpy as sc
 import pandas as pd
 
+from annoy import AnnoyIndex
+
 from tensorflow import keras
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import Input, Dense, AlphaDropout, Lambda
@@ -58,7 +60,7 @@ def generator_from_index(adata, k = 20, batch_size = 32, search_k=-1,
     for i in batch_list.unique():
           datasets_pcs.append(adata[batch_list == i].obsm["X_pca"])
 
-    alignments, matches = find_alignments(datasets = datasets_pcs, knn = k, prenormalized = True, approx = False)
+    alignments, matches = find_alignments(datasets = datasets_pcs, knn = k, prenormalized = True, approx = True)
 
     dict_mnn, cells_for_mnn = create_dictionary_mnn(datasets, matches)
 
@@ -161,7 +163,6 @@ def create_dictionary_mnn(datasets, matches):
 def create_dictionary_knn(adata, cells_for_knn, k):
 
     dataset = adata[cells_for_knn]
-    #dataset = adata
     batch_list = dataset.obs['batch']
     pairs=[]
     for i in batch_list.unique():
@@ -171,7 +172,7 @@ def create_dictionary_knn(adata, cells_for_knn, k):
         dataset_new = adata[adata.obs['batch']==i]
         dataset_new_pcs = dataset_new.obsm['X_pca']
 
-        match_self = nn(dataset_ref_pcs, dataset_new_pcs,  knn=20, metric_p=2)
+        match_self = nn_approx(dataset_ref_pcs, dataset_new_pcs,  knn = k)
         names_knn = dataset_ref.obs_names.tolist()
         names_all = dataset_new.obs_names.tolist()
         for j in match_self:
@@ -193,7 +194,7 @@ class TNN(BaseEstimator):
     def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=64,
                  epochs=1000, n_epochs_without_progress=20,
                  margin=1, ntrees=50, search_k=-1,
-                 precompute=True, model='szubert',
+                 precompute=True,
                  supervision_metric='sparse_categorical_crossentropy',
                  supervision_weight=0.5, annoy_index_path=None,
                  callbacks=[], build_index_on_disk=None, verbose=1):
@@ -208,7 +209,7 @@ class TNN(BaseEstimator):
         self.ntrees = ntrees
         self.search_k = search_k
         self.precompute = precompute
-        self.model_def = model
+        self.model_def = "dummy"
         self.model_ = None
         self.encoder = None
         self.supervision_metric = supervision_metric
@@ -276,7 +277,7 @@ class TNN(BaseEstimator):
 
         hist = self.model_.fit(datagen,
                                epochs=self.epochs,
-                               callbacks=[callback for callback in self.callbacks] +[EarlyStopping(monitor=loss_monitor,patience=self.n_epochs_without_progress)],
+                               callbacks=[callback for callback in self.callbacks] + [EarlyStopping(monitor=loss_monitor,patience=self.n_epochs_without_progress)],
                                shuffle = shuffle_mode,
                                workers = 10,
                                verbose=self.verbose)
@@ -285,7 +286,7 @@ class TNN(BaseEstimator):
 
 
     def fit(self, X, Y=None, shuffle_mode=True):
-        """Fit an ivis model.
+        """Fit model.
 
         Parameters
         ----------
@@ -358,7 +359,6 @@ class TNN(BaseEstimator):
 
         softmax_output = self.supervised_model_.predict(X, verbose=self.verbose)
         return softmax_output
-
 
 def semi_supervised_loss(loss_function):
     def new_loss_function(y_true, y_pred):
@@ -520,7 +520,7 @@ def nn(ds1, ds2, knn=KNN, metric_p=2):
     return match
 
 # Approximate nearest neighbors using locality sensitive hashing.
-def nn_approx(ds1, ds2, knn=KNN, metric='euclide', n_trees=10):
+def nn_approx(ds1, ds2, knn = KNN, metric='euclidean', n_trees = 50):
     # Build index.
     a = AnnoyIndex(ds2.shape[1], metric=metric)
     for i in range(ds2.shape[0]):
