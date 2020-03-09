@@ -324,7 +324,8 @@ class TNN(BaseEstimator):
 
     def transform(self, X):
         """Transform X into the existing embedded space and return that
-        transformed output.
+        transformed output.R0ckyyy123
+        
 
         Parameters
         ----------
@@ -389,17 +390,8 @@ def consecutive_indexed(Y):
         return False
     return True
 
-ALPHA = 0.10
-APPROX = True
-BATCH_SIZE = 5000
-DIMRED = 100
-KNN = 20
-N_ITER = 500
-SIGMA = 15
-VERBOSE = 2
-
-def find_alignments(datasets, knn=KNN, approx=APPROX, verbose=VERBOSE,
-                    alpha=ALPHA, prenormalized=False,):
+def find_alignments(datasets, knn=20, approx=True, verbose=2,
+                    alpha=0.10, prenormalized=False,):
     table1, _, matches = find_alignments_table(
         datasets, knn=knn, approx=approx, verbose=verbose,
         prenormalized=prenormalized,
@@ -411,7 +403,7 @@ def find_alignments(datasets, knn=KNN, approx=APPROX, verbose=VERBOSE,
 
     return alignments, matches
 
-def find_alignments_table(datasets, knn=KNN, approx=APPROX, verbose=VERBOSE,
+def find_alignments_table(datasets, knn=20, approx=True, verbose=2,
                           prenormalized=False):
     if not prenormalized:
         datasets = [ normalize(ds, axis=1) for ds in datasets ]
@@ -455,7 +447,7 @@ def find_alignments_table(datasets, knn=KNN, approx=APPROX, verbose=VERBOSE,
         return table1, None, matches
 
 def fill_table(table, i, curr_ds, datasets, base_ds=0,
-               knn=KNN, approx=APPROX):
+               knn=20, approx=True):
     curr_ref = np.concatenate(datasets)
     if approx:
         match = nn_approx(curr_ds, curr_ref, knn=knn)
@@ -487,7 +479,7 @@ def fill_table(table, i, curr_ds, datasets, base_ds=0,
 
 
 # Find mutual nearest neighbors.
-def mnn(ds1, ds2, knn=KNN, approx=APPROX):
+def mnn(ds1, ds2, knn=20, approx=True):
     # Find nearest neighbors in first direction.
     if approx:
         match1 = nn_approx(ds1, ds2, knn=knn)  #should be a list
@@ -506,7 +498,7 @@ def mnn(ds1, ds2, knn=KNN, approx=APPROX):
     return mutual
 
 # Exact nearest neighbors search.
-def nn(ds1, ds2, knn=KNN, metric_p=2):
+def nn(ds1, ds2, knn=20, metric_p=2):
     # Find nearest neighbors of first dataset.
     nn_ = NearestNeighbors(knn, p=metric_p)
     nn_.fit(ds2)
@@ -520,7 +512,7 @@ def nn(ds1, ds2, knn=KNN, metric_p=2):
     return match
 
 # Approximate nearest neighbors using locality sensitive hashing.
-def nn_approx(ds1, ds2, knn = KNN, metric='euclidean', n_trees = 50):
+def nn_approx(ds1, ds2, knn = 20, metric='euclidean', n_trees = 50):
     # Build index.
     a = AnnoyIndex(ds2.shape[1], metric=metric)
     for i in range(ds2.shape[0]):

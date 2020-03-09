@@ -3,6 +3,7 @@ setup.py
 bbtnn/__init__.py
 bbtnn/bbtnn.py
 bbtnn/tnn.py
+bbtnn/version.py
 bbtnn.egg-info/PKG-INFO
 bbtnn.egg-info/SOURCES.txt
 bbtnn.egg-info/dependency_links.txt
