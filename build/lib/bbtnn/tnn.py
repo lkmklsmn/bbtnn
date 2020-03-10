@@ -72,22 +72,14 @@ def generator_from_index(adata, k = 20, batch_size = 32, search_k=-1,
     print ('******Total number of cells:'+ str(len(adata.obs_names)))
     print ('******Number of cells for MNN:'+ str(len(cells_for_mnn)))
 
-    knn_frame = pd.DataFrame({'index':list(dict_knn.keys()), 'neighbor':list(dict_knn.values())})
-    mnn_frame = pd.DataFrame({'index':list(dict_mnn.keys()), 'neighbor':list(dict_mnn.values())})
-    merged_frame = mnn_frame.append(knn_frame)
-
+    dict_final = {**dict_mnn, **dict_knn}
+    
     triplet_list = []
     for i in adata.obs_names:
-        if i in dict_mnn.keys():
-            samples = dict_mnn[i]
-            samples_indices = [adata.obs_names.get_loc(x) for x in samples]
-            triplet_list.append(samples_indices)
-        else:
-            if i in dict_knn.keys():
-                samples = dict_knn[i]
-                samples_indices = [adata.obs_names.get_loc(x) for x in samples]
-                triplet_list.append(samples_indices)
-
+        samples = dict_final[i]
+        samples_indices = [adata.obs_names.get_loc(x) for x in samples]          
+        triplet_list.append(samples_indices)
+         
     return KnnTripletGenerator(X = adata.obsm["X_pca"], dictionary = triplet_list, batch_size=batch_size)
 
 
