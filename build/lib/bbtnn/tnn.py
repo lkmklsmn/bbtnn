@@ -37,7 +37,7 @@ def base_network(input_shape):
     '''Base network to be shared (eq. to feature extraction).
     '''
     inputs = Input(shape=input_shape)
-    n_dim = round(0.75 * input_shape[0])
+    n_dim = round(0.5 * input_shape[0])
     x = Dense(n_dim, activation='selu',
               kernel_initializer='lecun_normal')(inputs)
     x = AlphaDropout(0.25)(x)
@@ -117,7 +117,9 @@ class KnnTripletGenerator(Sequence):
         anchor = row_index
         positive = np.random.choice(neighbour_list)
         negative = np.random.randint(self.num_cells)
-
+        while negative in neighbour_list:
+            negative = np.random.randint(self.num_cells)
+            
         triplets += [self.X[anchor], self.X[positive],
                      self.X[negative]]
 
@@ -153,7 +155,7 @@ def create_dictionary_mnn(datasets, matches):
     return(dict_mnn, cell_for_mnn)
 
 def create_dictionary_knn(adata, cells_for_knn, k):
-
+    
     dataset = adata[cells_for_knn]
     batch_list = dataset.obs['batch']
     pairs=[]
@@ -161,10 +163,11 @@ def create_dictionary_knn(adata, cells_for_knn, k):
         pp=[]
         dataset_ref = dataset[batch_list==i]
         dataset_ref_pcs = dataset_ref.obsm['X_pca']
-        dataset_new = adata[adata.obs['batch']==i]
+        dataset_new = adata[adata.obs['batch']!=i]
+        #dataset_new = adata
         dataset_new_pcs = dataset_new.obsm['X_pca']
 
-        match_self = nn_approx(dataset_ref_pcs, dataset_new_pcs,  knn = k)
+        match_self = nn(dataset_ref_pcs, dataset_new_pcs,  knn=10, metric_p=2)
         names_knn = dataset_ref.obs_names.tolist()
         names_all = dataset_new.obs_names.tolist()
         for j in match_self:
@@ -173,12 +176,10 @@ def create_dictionary_knn(adata, cells_for_knn, k):
     pairs_one = np.array(pairs)[:,0]
     pairs_two = np.array(pairs)[:,1]
     data = pd.DataFrame({"pair_one" : pairs_one, "pair_two" : pairs_two})
-    dict_knn = data.groupby("pair_one").pair_two.apply(list).to_dict()
-
+    dict_knn = data.groupby("pair_one").pair_two.apply(list)
+    
     cell_for_knn = set(data['pair_one'].unique())
-
-    print (len(cell_for_knn))
-
+    
     return(dict_knn, cell_for_knn)
 
 class TNN(BaseEstimator):
