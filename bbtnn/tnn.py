@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import numpy as np
 import scanpy as sc
 import pandas as pd
@@ -59,23 +62,23 @@ def generator_from_index(adata, k = 20, batch_size = 32, search_k=-1,
     datasets_pcs = []
     for i in batch_list.unique():
           datasets_pcs.append(adata[batch_list == i].obsm["X_pca"])
-
+    print("calc mnns")
     alignments, matches = find_alignments(datasets = datasets_pcs, knn = k, prenormalized = True, approx = True)
-
+    print("sort mnns")
     dict_mnn, cells_for_mnn = create_dictionary_mnn(datasets, matches)
 
     cells_for_knn = list(set(adata.obs_names) - set(cells_for_mnn))
-
+    print("calc knns")
     dict_knn, cells_for_knn_1 = create_dictionary_knn(adata, cells_for_knn, k)
 
     print ('******Batches:'+ str(batch_list.unique()))
     print ('******Total number of cells:'+ str(len(adata.obs_names)))
     print ('******Number of cells for MNN:'+ str(len(cells_for_mnn)))
-
+    print("reformat")
     knn_frame = pd.DataFrame({'index':list(dict_knn.keys()), 'neighbor':list(dict_knn.values())})
     mnn_frame = pd.DataFrame({'index':list(dict_mnn.keys()), 'neighbor':list(dict_mnn.values())})
     merged_frame = mnn_frame.append(knn_frame)
-
+    print("sort")
     triplet_list = []
     for i in adata.obs_names:
         if i in dict_mnn.keys():
@@ -325,7 +328,7 @@ class TNN(BaseEstimator):
     def transform(self, X):
         """Transform X into the existing embedded space and return that
         transformed output.R0ckyyy123
-        
+
 
         Parameters
         ----------
