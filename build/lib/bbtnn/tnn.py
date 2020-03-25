@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import numpy as np
 import scanpy as sc
 import pandas as pd
@@ -221,7 +218,7 @@ def base_network(input_shape):
     '''Base network to be shared (eq. to feature extraction).
     '''
     inputs = Input(shape=input_shape)
-    n_dim = round(0.75 * input_shape[0])
+    n_dim = round(0.5 * input_shape[0])
     x = Dense(n_dim, activation='selu',
               kernel_initializer='lecun_normal')(inputs)
     x = AlphaDropout(0.25)(x)
@@ -243,35 +240,27 @@ def generator_from_index(adata, k = 20, batch_size = 32, search_k=-1,
     datasets_pcs = []
     for i in batch_list.unique():
           datasets_pcs.append(adata[batch_list == i].obsm["X_pca"])
-    print("calc mnns")
+
     alignments, matches = find_alignments(datasets = datasets_pcs, knn = k, prenormalized = True, approx = True)
-    print("sort mnns")
+
     dict_mnn, cells_for_mnn = create_dictionary_mnn(datasets, matches)
 
     cells_for_knn = list(set(adata.obs_names) - set(cells_for_mnn))
-    print("calc knns")
+
     dict_knn, cells_for_knn_1 = create_dictionary_knn(adata, cells_for_knn, k)
 
     print ('******Batches:'+ str(batch_list.unique()))
     print ('******Total number of cells:'+ str(len(adata.obs_names)))
     print ('******Number of cells for MNN:'+ str(len(cells_for_mnn)))
-    print("reformat")
-    knn_frame = pd.DataFrame({'index':list(dict_knn.keys()), 'neighbor':list(dict_knn.values())})
-    mnn_frame = pd.DataFrame({'index':list(dict_mnn.keys()), 'neighbor':list(dict_mnn.values())})
-    merged_frame = mnn_frame.append(knn_frame)
-    print("sort")
+
+    dict_final = {**dict_mnn, **dict_knn}
+    
     triplet_list = []
     for i in adata.obs_names:
-        if i in dict_mnn.keys():
-            samples = dict_mnn[i]
-            samples_indices = [adata.obs_names.get_loc(x) for x in samples]
-            triplet_list.append(samples_indices)
-        else:
-            if i in dict_knn.keys():
-                samples = dict_knn[i]
-                samples_indices = [adata.obs_names.get_loc(x) for x in samples]
-                triplet_list.append(samples_indices)
-
+        samples = dict_final[i]
+        samples_indices = [adata.obs_names.get_loc(x) for x in samples]          
+        triplet_list.append(samples_indices)
+         
     return KnnTripletGenerator(X = adata.obsm["X_pca"], dictionary = triplet_list, batch_size=batch_size)
 
 
@@ -309,7 +298,9 @@ class KnnTripletGenerator(Sequence):
         anchor = row_index
         positive = np.random.choice(neighbour_list)
         negative = np.random.randint(self.num_cells)
-
+        while negative in neighbour_list:
+            negative = np.random.randint(self.num_cells)
+            
         triplets += [self.X[anchor], self.X[positive],
                      self.X[negative]]
 
@@ -345,7 +336,7 @@ def create_dictionary_mnn(datasets, matches):
     return(dict_mnn, cell_for_mnn)
 
 def create_dictionary_knn(adata, cells_for_knn, k):
-
+    
     dataset = adata[cells_for_knn]
     batch_list = dataset.obs['batch']
     pairs=[]
@@ -353,10 +344,11 @@ def create_dictionary_knn(adata, cells_for_knn, k):
         pp=[]
         dataset_ref = dataset[batch_list==i]
         dataset_ref_pcs = dataset_ref.obsm['X_pca']
-        dataset_new = adata[adata.obs['batch']==i]
+        dataset_new = adata[adata.obs['batch']!=i]
+        #dataset_new = adata
         dataset_new_pcs = dataset_new.obsm['X_pca']
 
-        match_self = nn_approx(dataset_ref_pcs, dataset_new_pcs,  knn = k)
+        match_self = nn(dataset_ref_pcs, dataset_new_pcs,  knn=10, metric_p=2)
         names_knn = dataset_ref.obs_names.tolist()
         names_all = dataset_new.obs_names.tolist()
         for j in match_self:
@@ -365,12 +357,10 @@ def create_dictionary_knn(adata, cells_for_knn, k):
     pairs_one = np.array(pairs)[:,0]
     pairs_two = np.array(pairs)[:,1]
     data = pd.DataFrame({"pair_one" : pairs_one, "pair_two" : pairs_two})
-    dict_knn = data.groupby("pair_one").pair_two.apply(list).to_dict()
-
+    dict_knn = data.groupby("pair_one").pair_two.apply(list)
+    
     cell_for_knn = set(data['pair_one'].unique())
-
-    print (len(cell_for_knn))
-
+    
     return(dict_knn, cell_for_knn)
 
 class TNN(BaseEstimator):
@@ -509,7 +499,7 @@ class TNN(BaseEstimator):
     def transform(self, X):
         """Transform X into the existing embedded space and return that
         transformed output.R0ckyyy123
-
+        
 
         Parameters
         ----------
