@@ -180,7 +180,7 @@ class KNN_Worker(Process):
 class IndexBuildingError(OSError):
     pass
 
-def nn_approx(ds1, ds2, knn = 20, n_trees = 50):
+def nn_approx_new(ds1, ds2, knn = 20, n_trees = 50):
 
   build_annoy_index(ds2, path='annoy.index', ntrees = n_trees, build_index_on_disk=False)
   tmp = extract_knn(ds1, index_filepath='annoy.index',  k = knn)
@@ -193,7 +193,7 @@ def nn_approx(ds1, ds2, knn = 20, n_trees = 50):
   return match
 
 # Approximate nearest neighbors using locality sensitive hashing.
-def nn_approx_old(ds1, ds2, knn = 20, metric='euclidean', n_trees = 50):
+def nn_approx(ds1, ds2, knn = 20, metric='euclidean', n_trees = 50):
     # Build index.
     a = AnnoyIndex(ds2.shape[1], metric=metric)
     for i in range(ds2.shape[0]):
@@ -506,7 +506,7 @@ class TNN(BaseEstimator):
     def transform(self, X):
         """Transform X into the existing embedded space and return that
         transformed output.R0ckyyy123
-        
+
 
         Parameters
         ----------
