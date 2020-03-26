@@ -60,11 +60,14 @@ def base_network(input_shape):
 
 
 def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
-                         precompute=True, verbose=1):
+                         save_on_disk = True, verbose=1):
 
     cell_names = adata.obs_names
-
-    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k)
+    if(verbose > 0):
+        print("Calculating MNNs...")
+    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk)
+    if(verbose > 0):
+        print(str(len(mnn_dict)) + " cells defined as MNNs")
 
     num_k = round(k_to_m_ratio * len(mnn_dict))
 
@@ -72,7 +75,11 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
     if(len(cells_for_knn) > num_k):
         cells_for_knn = np.random.choice(cells_for_knn, num_k, replace = False)
 
-    knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k)
+    if(verbose > 0):
+        print("Calculating KNNs")
+    knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk)
+    if(verbose > 0):
+        print(str(len(cells_for_knn)) + " cells defined as KNNs")
 
     final_dict = mnn_dict
     final_dict.update(knn_dict)
@@ -129,7 +136,7 @@ class KnnTripletGenerator(Sequence):
 
         return triplets
 
-def create_dictionary_mnn(adata, batch_name, k = 50):
+def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
 
     cell_names = adata.obs_names
 
@@ -157,7 +164,7 @@ def create_dictionary_mnn(adata, batch_name, k = 50):
         ds2 = adata[ref].obsm['X_pca']
         names1 = new
         names2 = ref
-        match = mnn(ds1, ds2, names1, names2, knn=k)
+        match = mnn(ds1, ds2, names1, names2, knn=k, save_on_disk = save_on_disk)
 
         G = nx.Graph()
         G.add_edges_from(match)
@@ -176,7 +183,7 @@ def create_dictionary_mnn(adata, batch_name, k = 50):
     return(mnns)
 
 
-def create_dictionary_knn(adata, cells_for_knn, k = 50):
+def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True):
 
     cell_names = adata.obs_names
 
@@ -184,7 +191,8 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50):
     dataset_ref = dataset.obsm['X_pca']
 
     a = AnnoyIndex(dataset_ref.shape[1], metric='euclidean')
-    #a.on_disk_build('annoy.index')
+    if(save_on_disk):
+        a.on_disk_build('annoy.index')
     for i in range(dataset_ref.shape[0]):
         a.add_item(i, dataset_ref[i, :])
     a.build(50)
@@ -205,7 +213,7 @@ class TNN(BaseEstimator):
     def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=64,
                  epochs=1000, n_epochs_without_progress=20,
                  margin=1, ntrees=50, search_k=-1,
-                 precompute=True,
+                 precompute=True, save_on_disk=True,
                  supervision_metric='sparse_categorical_crossentropy',
                  supervision_weight=0.5, annoy_index_path=None,
                  callbacks=[], build_index_on_disk=None, verbose=1):
@@ -229,6 +237,7 @@ class TNN(BaseEstimator):
         self.loss_history_ = []
         self.annoy_index_path = annoy_index_path
         self.callbacks = callbacks
+        self.save_on_disk = save_on_disk
         for callback in self.callbacks:
             if isinstance(callback, ModelCheckpoint):
                 callback = callback.register_ivis_model(self)
@@ -261,7 +270,9 @@ class TNN(BaseEstimator):
                                         k_to_m_ratio = 0.75,
                                        k=self.k,
                                        batch_size=self.batch_size,
-                                       search_k=self.search_k)
+                                       search_k=self.search_k,
+                                       verbose = self.verbose,
+                                       save_on_disk = self.save_on_disk)
 
         loss_monitor = 'loss'
         try:
@@ -373,11 +384,12 @@ def consecutive_indexed(Y):
     return True
 
 
-def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50):
+def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
     """ Assumes that Y is zero-indexed. """
     # Build index.
     a = AnnoyIndex(ds2.shape[1], metric=metric)
-    #a.on_disk_build('annoy.index')
+    if(save_on_disk):
+        a.on_disk_build('annoy.index')
     for i in range(ds2.shape[0]):
         a.add_item(i, ds2[i, :])
     a.build(n_trees)
@@ -397,11 +409,11 @@ def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 
     return match
 
 
-def mnn(ds1, ds2, names1, names2, knn = 20):
+def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True):
     # Find nearest neighbors in first direction.
-    match1 = nn_approx(ds1, ds2, names1, names2, knn=knn)  #should be a list
+    match1 = nn_approx(ds1, ds2, names1, names2, knn=knn, save_on_disk = save_on_disk)  #should be a list
     # Find nearest neighbors in second direction.
-    match2 = nn_approx(ds2, ds1, names2, names1, knn=knn)
+    match2 = nn_approx(ds2, ds1, names2, names1, knn=knn, save_on_disk = save_on_disk)
 
     # Compute mutual nearest neighbors.
     mutual = match1 & set([ (b, a) for a, b in match2 ])
