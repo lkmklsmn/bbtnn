@@ -88,6 +88,8 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     bdata = adata[cells]
 
+    if(verbose > 0):
+        print("Re-format")
     triplet_list = []
     for i in cells:
         names = final_dict[i]
