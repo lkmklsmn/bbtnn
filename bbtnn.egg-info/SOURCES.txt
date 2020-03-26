@@ -4,6 +4,7 @@ bbtnn/__init__.py
 bbtnn/bbtnn.py
 bbtnn/tnn.py
 bbtnn/tnn_v2.py
+bbtnn/tnn_v3.py
 bbtnn/version.py
 bbtnn.egg-info/PKG-INFO
 bbtnn.egg-info/SOURCES.txt
