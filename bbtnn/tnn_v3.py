@@ -152,8 +152,12 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
         cells.append(cell_names[batch_list == i])
 
     mnns = dict()
-    for i in range(len(datasets) - 1):
-        j = i + 1
+    #for i in range(len(datasets) - 1):
+    for comb in list(itertools.combinations(range(len(cells)), 2)):
+        i = comb[0]
+        j = comb[1]
+
+        #j = i + 1
 
         print('Processing datasets {}'.format((i, j)))
 
