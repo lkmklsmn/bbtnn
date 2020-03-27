@@ -132,8 +132,6 @@ class KnnTripletGenerator(Sequence):
         anchor = row_index
         positive = np.random.choice(neighbour_list)
         negative = np.random.randint(self.num_cells)
-        while negative in neighbour_list:
-            negative = np.random.randint(self.num_cells)
 
         triplets += [self.X[anchor], self.X[positive],
                      self.X[negative]]
