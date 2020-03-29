@@ -22,6 +22,7 @@ from scipy.sparse import issparse
 from scipy.spatial import cKDTree
 
 from sklearn.base import BaseEstimator
+from sklearn.neighbors import NearestNeighbors
 import json
 import os
 import shutil
@@ -77,6 +78,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     if(verbose > 0):
         print("Calculating KNNs")
+        print("HELLO")
     knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk)
     if(verbose > 0):
         print(str(len(cells_for_knn)) + " cells defined as KNNs")
@@ -95,13 +97,23 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
         names = final_dict[i]
         triplet_list.append([bdata.obs_names.get_loc(x) for x in names])
 
-    return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list, batch_size=batch_size)
+    batch_list = bdata.obs["batch"]
+    batch_indices = []
+    for i in batch_list.unique():
+        batch_indices.append(list(np.where(batch_list == i)[0]))
+
+    batch_list = [int(i) for i in list(batch_list)]
+
+    return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
+                               batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
 
 
 class KnnTripletGenerator(Sequence):
 
-    def __init__(self, X, dictionary, batch_size=32):
+    def __init__(self, X, dictionary, batch_list, batch_indices, batch_size=32):
         self.X = X
+        self.batch_list = batch_list
+        self.batch_indices = batch_indices
         self.batch_size = batch_size
         self.dictionary = dictionary
         self.placeholder_labels = np.empty(batch_size, dtype=np.uint8)
@@ -115,7 +127,10 @@ class KnnTripletGenerator(Sequence):
         batch_indices = range(idx * self.batch_size, min((idx + 1) * self.batch_size, self.num_cells))
 
 
-        triplet_batch = [self.knn_triplet_from_dictionary(row_index = row_index, neighbour_list = self.dictionary[row_index], num_cells = self.num_cells) for row_index in batch_indices]
+        triplet_batch = [self.knn_triplet_from_dictionary(row_index = row_index,
+                                                          neighbour_list = self.dictionary[row_index],
+                                                          batch = self.batch_list[row_index],
+                                                          num_cells = self.num_cells) for row_index in batch_indices]
 
         if (issparse(self.X)):
             triplet_batch = [[e.toarray()[0] for e in t] for t in triplet_batch]
@@ -125,18 +140,21 @@ class KnnTripletGenerator(Sequence):
 
         return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels
 
-    def knn_triplet_from_dictionary(self, row_index, neighbour_list, num_cells):
+    def knn_triplet_from_dictionary(self, row_index, neighbour_list, batch, num_cells):
         """ A random (unweighted) positive example chosen. """
         triplets = []
 
         anchor = row_index
         positive = np.random.choice(neighbour_list)
-        negative = np.random.randint(self.num_cells)
+
+        #negative = np.random.randint(self.num_cells)
+        negative = np.random.choice(self.batch_indices[batch])
 
         triplets += [self.X[anchor], self.X[positive],
                      self.X[negative]]
 
         return triplets
+
 
 def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
 
@@ -220,6 +238,7 @@ class TNN(BaseEstimator):
                  epochs=1000, n_epochs_without_progress=20,
                  margin=1, ntrees=50, search_k=-1,
                  precompute=True, save_on_disk=True,
+                 k_to_m_ratio = 0.75,
                  supervision_metric='sparse_categorical_crossentropy',
                  supervision_weight=0.5, annoy_index_path=None,
                  callbacks=[], build_index_on_disk=None, verbose=1):
@@ -237,6 +256,7 @@ class TNN(BaseEstimator):
         self.model_def = "dummy"
         self.model_ = None
         self.encoder = None
+        self.k_to_m_ratio = k_to_m_ratio
         self.supervision_metric = supervision_metric
         self.supervision_weight = supervision_weight
         self.supervised_model_ = None
@@ -273,7 +293,7 @@ class TNN(BaseEstimator):
 
         datagen = generator_from_index(X,
                                         batch_name = batch_name,
-                                        k_to_m_ratio = 0.75,
+                                        k_to_m_ratio = self.k_to_m_ratio,
                                        k=self.k,
                                        batch_size=self.batch_size,
                                        search_k=self.search_k,
@@ -389,6 +409,19 @@ def consecutive_indexed(Y):
         return False
     return True
 
+
+def nn(ds1, ds2, names1, names2, knn=50, metric_p=2, save_on_disk = True):
+    # Find nearest neighbors of first dataset.
+    nn_ = NearestNeighbors(knn, p=metric_p)
+    nn_.fit(ds2)
+    ind = nn_.kneighbors(ds1, return_distance=False)
+
+    match = set()
+    for a, b in zip(range(ds1.shape[0]), ind):
+        for b_i in b:
+            match.add((names1[a], names2[b_i]))
+
+    return match
 
 def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
     """ Assumes that Y is zero-indexed. """
