@@ -462,12 +462,12 @@ def consecutive_indexed(Y):
         return False
     return True
 
-def nn(ds1, ds2, names1, names2, knn=50):
+def nn_approx(ds1, ds2, names1, names2, knn=50):
     print("new function")
     dim = ds2.shape[1]
     num_elements = ds2.shape[0]
     p = hnswlib.Index(space='l2', dim=dim)
-    p.init_index(max_elements=num_elements, ef_construction=100, M=16)
+    p.init_index(max_elements=num_elements, ef_construction=100, M= round(knn/2))
     p.set_ef(10)
     p.add_items(ds2)
     ind, distances = p.knn_query(ds1, k=knn)
@@ -479,7 +479,7 @@ def nn(ds1, ds2, names1, names2, knn=50):
 
     return(match)
 
-def nn_sklearn(ds1, ds2, names1, names2, knn=50, metric_p=2):
+def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
     nn_ = NearestNeighbors(knn, p=metric_p)
     nn_.fit(ds2)
@@ -492,7 +492,7 @@ def nn_sklearn(ds1, ds2, names1, names2, knn=50, metric_p=2):
 
     return match
 
-def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
+def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
     """ Assumes that Y is zero-indexed. """
     # Build index.
     a = AnnoyIndex(ds2.shape[1], metric=metric)
@@ -520,9 +520,9 @@ def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 
 def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True, approx = True):
     # Find nearest neighbors in first direction.
     if approx:
-        match1 = nn_approx(ds1, ds2, names1, names2, knn=knn, save_on_disk = save_on_disk)
+        match1 = nn_approx(ds1, ds2, names1, names2, knn=knn)#, save_on_disk = save_on_disk)
         # Find nearest neighbors in second direction.
-        match2 = nn_approx(ds2, ds1, names2, names1, knn=knn, save_on_disk = save_on_disk)
+        match2 = nn_approx(ds2, ds1, names2, names1, knn=knn)#, save_on_disk = save_on_disk)
     else:
         match1 = nn(ds1, ds2, names1, names2, knn=knn)
         match2 = nn(ds2, ds1, names2, names1, knn=knn)
