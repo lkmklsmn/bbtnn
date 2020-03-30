@@ -68,7 +68,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
     cell_names = adata.obs_names
     if(verbose > 0):
         print("Calculating MNNs...")
-    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk, approx = approx)
+    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk, approx = approx, verbose = verbose)
     if(verbose > 0):
         print(str(len(mnn_dict)) + " cells defined as MNNs")
 
@@ -94,7 +94,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     # Define list of positives
     if(verbose > 0):
-        print("Re-format")
+        print("Reorder")
     triplet_list = []
     for i in cells:
         names = final_dict[i]
@@ -152,7 +152,8 @@ class KnnTripletGenerator(Sequence):
         positive = np.random.choice(neighbour_list)
 
         #negative = np.random.randint(self.num_cells)
-        negative = np.random.choice(self.batch_indices[batch])
+        negative = self.batch_indices[batch][np.random.randint(len(self.batch_indices[batch]))]
+        #negative = np.random.choice(self.batch_indices[batch])
 
         triplets += [self.X[anchor], self.X[positive],
                      self.X[negative]]
@@ -160,7 +161,7 @@ class KnnTripletGenerator(Sequence):
         return triplets
 
 
-def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx = True):
+def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx = True, verbose = 1):
 
     cell_names = adata.obs_names
 
@@ -180,8 +181,8 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx
         j = comb[1]
 
         #j = i + 1
-
-        print('Processing datasets {}'.format((i, j)))
+        if(verbose > 0):
+            print('Processing datasets {}'.format((i, j)))
 
         new = list(cells[j])
         ref = []
@@ -463,11 +464,10 @@ def consecutive_indexed(Y):
     return True
 
 def nn_approx(ds1, ds2, names1, names2, knn=50):
-    print("new function")
     dim = ds2.shape[1]
     num_elements = ds2.shape[0]
     p = hnswlib.Index(space='l2', dim=dim)
-    p.init_index(max_elements=num_elements, ef_construction=100, M= round(knn/2))
+    p.init_index(max_elements=num_elements, ef_construction=100, M = round(knn/2))
     p.set_ef(10)
     p.add_items(ds2)
     ind, distances = p.knn_query(ds1, k=knn)
@@ -477,7 +477,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
         for b_i in b:
             match.add((names1[a], names2[b_i]))
 
-    return(match)
+    return match
 
 def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
@@ -515,7 +515,6 @@ def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 5
             match.add((names1[a], names2[b_i]))
 
     return match
-
 
 def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True, approx = True):
     # Find nearest neighbors in first direction.
