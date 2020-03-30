@@ -78,7 +78,6 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     if(verbose > 0):
         print("Calculating KNNs")
-        print("HELLO")
     knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk)
     if(verbose > 0):
         print(str(len(cells_for_knn)) + " cells defined as KNNs")
