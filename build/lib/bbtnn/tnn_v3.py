@@ -61,12 +61,12 @@ def base_network(input_shape):
 
 
 def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
-                         save_on_disk = True, verbose=1):
+                         save_on_disk = True, approx = True, verbose=1):
 
     cell_names = adata.obs_names
     if(verbose > 0):
         print("Calculating MNNs...")
-    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk)
+    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk, approx = approx)
     if(verbose > 0):
         print(str(len(mnn_dict)) + " cells defined as MNNs")
 
@@ -78,8 +78,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     if(verbose > 0):
         print("Calculating KNNs")
-        print("HELLO")
-    knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk)
+    knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk, approx = approx)
     if(verbose > 0):
         print(str(len(cells_for_knn)) + " cells defined as KNNs")
 
@@ -156,7 +155,7 @@ class KnnTripletGenerator(Sequence):
         return triplets
 
 
-def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
+def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx = True):
 
     cell_names = adata.obs_names
 
@@ -188,7 +187,7 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
         ds2 = adata[ref].obsm['X_pca']
         names1 = new
         names2 = ref
-        match = mnn(ds1, ds2, names1, names2, knn=k, save_on_disk = save_on_disk)
+        match = mnn(ds1, ds2, names1, names2, knn=k, save_on_disk = save_on_disk, approx = approx)
 
         G = nx.Graph()
         G.add_edges_from(match)
@@ -207,27 +206,38 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True):
     return(mnns)
 
 
-def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True):
+def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, approx = True):
 
     cell_names = adata.obs_names
 
     dataset = adata[cells_for_knn]
     dataset_ref = dataset.obsm['X_pca']
 
-    a = AnnoyIndex(dataset_ref.shape[1], metric='euclidean')
-    if(save_on_disk):
-        a.on_disk_build('annoy.index')
-    for i in range(dataset_ref.shape[0]):
-        a.add_item(i, dataset_ref[i, :])
-    a.build(50)
-
-    # Search index.
     knns = dict()
-    for i in range(dataset_ref.shape[0]):
-        indices = a.get_nns_by_vector(dataset_ref[i, :], k, search_k=-1)[1:]
-        key = cells_for_knn[i]
-        names = np.array(cells_for_knn)[indices]
-        knns[key] = names
+
+    if approx:
+        a = AnnoyIndex(dataset_ref.shape[1], metric='euclidean')
+        if(save_on_disk):
+            a.on_disk_build('annoy.index')
+        for i in range(dataset_ref.shape[0]):
+            a.add_item(i, dataset_ref[i, :])
+        a.build(50)
+
+        for i in range(dataset_ref.shape[0]):
+            indices = a.get_nns_by_vector(dataset_ref[i, :], k, search_k=-1)[1:]
+            key = cells_for_knn[i]
+            names = np.array(cells_for_knn)[indices]
+            knns[key] = names
+    else:
+        nn_ = NearestNeighbors(n_neighbors = k, p = 2)
+        nn_.fit(dataset_ref)
+        ind = nn_.kneighbors(dataset_ref, return_distance=False)
+        for i in range(dataset_ref.shape[0]):
+            indices = ind[i,:][1:]
+            key = cells_for_knn[i]
+            names = np.array(cells_for_knn)[indices]
+            knns[key] = names
+    # Search index.
 
     return(knns)
 
@@ -241,6 +251,7 @@ class TNN(BaseEstimator):
                  k_to_m_ratio = 0.75,
                  supervision_metric='sparse_categorical_crossentropy',
                  supervision_weight=0.5, annoy_index_path=None,
+                 approx = True,
                  callbacks=[], build_index_on_disk=None, verbose=1):
 
         self.embedding_dims = embedding_dims
@@ -257,6 +268,7 @@ class TNN(BaseEstimator):
         self.model_ = None
         self.encoder = None
         self.k_to_m_ratio = k_to_m_ratio
+        self.approx = approx
         self.supervision_metric = supervision_metric
         self.supervision_weight = supervision_weight
         self.supervised_model_ = None
@@ -298,7 +310,8 @@ class TNN(BaseEstimator):
                                        batch_size=self.batch_size,
                                        search_k=self.search_k,
                                        verbose = self.verbose,
-                                       save_on_disk = self.save_on_disk)
+                                       save_on_disk = self.save_on_disk,
+                                       approx = self.approx)
 
         loss_monitor = 'loss'
         try:
@@ -390,6 +403,37 @@ class TNN(BaseEstimator):
         embedding = self.encoder.predict(X.obsm['X_pca'], verbose=self.verbose)
         return embedding
 
+    def score_samples(self, X):
+        """Passes X through classification network to obtain predicted
+        supervised values. Only applicable when trained in
+        supervised mode.
+        Parameters
+        ----------
+        X : array, shape (n_samples, n_features)
+            Data to be passed through classification network.
+        Returns
+        -------
+        X_new : array, shape (n_samples, embedding_dims)
+            Softmax class probabilities of the data.
+        """
+
+        if self.supervised_model_ is None:
+            raise Exception("Model was not trained in classification mode.")
+
+        softmax_output = self.supervised_model_.predict(X, verbose=self.verbose)
+        return softmax_output
+
+def semi_supervised_loss(loss_function):
+    def new_loss_function(y_true, y_pred):
+        mask = tf.cast(~tf.math.equal(y_true, -1), tf.float32)
+        y_true_pos = tf.nn.relu(y_true)
+        loss = loss_function(y_true_pos, y_pred)
+        masked_loss = loss * mask
+        return masked_loss
+    new_func = new_loss_function
+    new_func.__name__ = loss_function.__name__
+    return new_func
+
 def validate_sparse_labels(Y):
     if not zero_indexed(Y):
         raise ValueError('Ensure that your labels are zero-indexed')
@@ -410,7 +454,7 @@ def consecutive_indexed(Y):
     return True
 
 
-def nn(ds1, ds2, names1, names2, knn=50, metric_p=2, save_on_disk = True):
+def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
     nn_ = NearestNeighbors(knn, p=metric_p)
     nn_.fit(ds2)
@@ -448,12 +492,15 @@ def nn_approx(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 
     return match
 
 
-def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True):
+def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True, approx = True):
     # Find nearest neighbors in first direction.
-    match1 = nn_approx(ds1, ds2, names1, names2, knn=knn, save_on_disk = save_on_disk)  #should be a list
-    # Find nearest neighbors in second direction.
-    match2 = nn_approx(ds2, ds1, names2, names1, knn=knn, save_on_disk = save_on_disk)
-
+    if approx:
+        match1 = nn_approx(ds1, ds2, names1, names2, knn=knn, save_on_disk = save_on_disk)
+        # Find nearest neighbors in second direction.
+        match2 = nn_approx(ds2, ds1, names2, names1, knn=knn, save_on_disk = save_on_disk)
+    else:
+        match1 = nn(ds1, ds2, names1, names2, knn=knn)
+        match2 = nn(ds2, ds1, names2, names1, knn=knn)
     # Compute mutual nearest neighbors.
     mutual = match1 & set([ (b, a) for a, b in match2 ])
 
