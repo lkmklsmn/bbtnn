@@ -44,6 +44,7 @@ import time
 import itertools
 import networkx as nx
 
+import hnswlib
 
 def base_network(input_shape):
     '''Base network to be shared (eq. to feature extraction).
@@ -63,6 +64,7 @@ def base_network(input_shape):
 def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
                          save_on_disk = True, approx = True, verbose=1):
 
+    # Calculate MNNs by pairwise comparison between batches
     cell_names = adata.obs_names
     if(verbose > 0):
         print("Calculating MNNs...")
@@ -72,6 +74,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     num_k = round(k_to_m_ratio * len(mnn_dict))
 
+    # Calculate KNNs for residual cells
     cells_for_knn = list(set(cell_names) - set(list(mnn_dict.keys())))
     if(len(cells_for_knn) > num_k):
         cells_for_knn = np.random.choice(cells_for_knn, num_k, replace = False)
@@ -89,6 +92,7 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
 
     bdata = adata[cells]
 
+    # Define list of positives
     if(verbose > 0):
         print("Re-format")
     triplet_list = []
@@ -96,12 +100,13 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
         names = final_dict[i]
         triplet_list.append([bdata.obs_names.get_loc(x) for x in names])
 
+    # Define unique batches to same negatives from
     batch_list = bdata.obs["batch"]
     batch_indices = []
     for i in batch_list.unique():
         batch_indices.append(list(np.where(batch_list == i)[0]))
 
-    batch_list = [int(i) for i in list(batch_list)]
+    batch_list = [list(batch_list.unique()).index(i) for i in list(batch_list)]
 
     return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
@@ -211,33 +216,34 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
     cell_names = adata.obs_names
 
     dataset = adata[cells_for_knn]
-    dataset_ref = dataset.obsm['X_pca']
+    pcs = dataset.obsm['X_pca']
 
     knns = dict()
 
     if approx:
-        a = AnnoyIndex(dataset_ref.shape[1], metric='euclidean')
-        if(save_on_disk):
-            a.on_disk_build('annoy.index')
-        for i in range(dataset_ref.shape[0]):
-            a.add_item(i, dataset_ref[i, :])
-        a.build(50)
+        dim = pcs.shape[1]
+        num_elements = pcs.shape[0]
+        p = hnswlib.Index(space='l2', dim = dim)
+        p.init_index(max_elements=num_elements, ef_construction=100, M=16)
+        p.set_ef(10)
+        p.add_items(pcs)
+        ind, distances = p.knn_query(pcs, k=k)
 
-        for i in range(dataset_ref.shape[0]):
-            indices = a.get_nns_by_vector(dataset_ref[i, :], k, search_k=-1)[1:]
+        for i in range(pcs.shape[0]):
             key = cells_for_knn[i]
+            indices = ind[i]
             names = np.array(cells_for_knn)[indices]
             knns[key] = names
+
     else:
         nn_ = NearestNeighbors(n_neighbors = k, p = 2)
-        nn_.fit(dataset_ref)
-        ind = nn_.kneighbors(dataset_ref, return_distance=False)
-        for i in range(dataset_ref.shape[0]):
+        nn_.fit(pcs)
+        ind = nn_.kneighbors(pcs, return_distance=False)
+        for i in range(pcs.shape[0]):
             indices = ind[i,:][1:]
             key = cells_for_knn[i]
             names = np.array(cells_for_knn)[indices]
             knns[key] = names
-    # Search index.
 
     return(knns)
 
@@ -252,6 +258,7 @@ class TNN(BaseEstimator):
                  supervision_metric='sparse_categorical_crossentropy',
                  supervision_weight=0.5, annoy_index_path=None,
                  approx = True,
+                 #sample_weight = None,
                  callbacks=[], build_index_on_disk=None, verbose=1):
 
         self.embedding_dims = embedding_dims
@@ -275,6 +282,7 @@ class TNN(BaseEstimator):
         self.loss_history_ = []
         self.annoy_index_path = annoy_index_path
         self.callbacks = callbacks
+        #self.sample_weight = sample_weight
         self.save_on_disk = save_on_disk
         for callback in self.callbacks:
             if isinstance(callback, ModelCheckpoint):
@@ -301,7 +309,7 @@ class TNN(BaseEstimator):
             state['model_def'] = None
         return state
 
-    def _fit(self, X, batch_name, Y=None, shuffle_mode=True):
+    def _fit(self, X, batch_name, Y=None, shuffle_mode=True):#, sample_weight = None):
 
         datagen = generator_from_index(X,
                                         batch_name = batch_name,
@@ -343,11 +351,12 @@ class TNN(BaseEstimator):
                                callbacks=[callback for callback in self.callbacks] + [EarlyStopping(monitor=loss_monitor,patience=self.n_epochs_without_progress)],
                                shuffle = shuffle_mode,
                                workers = 10,
+                               #sample_weight = sample_weight,
                                verbose=self.verbose)
 
         self.loss_history_ += hist.history['loss']
 
-    def fit(self, X, batch_name, Y=None, shuffle_mode=True):
+    def fit(self, X, batch_name, Y=None, shuffle_mode=True):#, sample_weight = None):
         """Fit model.
 
         Parameters
@@ -361,7 +370,7 @@ class TNN(BaseEstimator):
         -------
         returns an instance of self
         """
-        self._fit(X, batch_name, Y, shuffle_mode)
+        self._fit(X, batch_name, Y, shuffle_mode = shuffle_mode)#, sample_weight = sample_weight)
         return self
 
     def fit_transform(self, X, batch_name, Y=None, shuffle_mode=True):
@@ -386,7 +395,7 @@ class TNN(BaseEstimator):
 
     def transform(self, X):
         """Transform X into the existing embedded space and return that
-        transformed output.R0ckyyy123
+        transformed output.
 
 
         Parameters
@@ -453,8 +462,24 @@ def consecutive_indexed(Y):
         return False
     return True
 
+def nn(ds1, ds2, names1, names2, knn=50):
+    print("new function")
+    dim = ds2.shape[1]
+    num_elements = ds2.shape[0]
+    p = hnswlib.Index(space='l2', dim=dim)
+    p.init_index(max_elements=num_elements, ef_construction=100, M=16)
+    p.set_ef(10)
+    p.add_items(ds2)
+    ind, distances = p.knn_query(ds1, k=knn)
 
-def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
+    match = set()
+    for a, b in zip(range(ds1.shape[0]), ind):
+        for b_i in b:
+            match.add((names1[a], names2[b_i]))
+
+    return(match)
+
+def nn_sklearn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
     nn_ = NearestNeighbors(knn, p=metric_p)
     nn_.fit(ds2)
