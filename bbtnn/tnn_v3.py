@@ -229,20 +229,14 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
         p.set_ef(10)
         p.add_items(pcs)
         ind, distances = p.knn_query(pcs, k=k)
-
-        for a, b in zip(cells_for_knn, ind):
-            knns[a] = np.array(cells_for_knn)[b]
+        dict(zip(cells_for_knn, ind))
 
     else:
         nn_ = NearestNeighbors(n_neighbors = k, p = 2)
         nn_.fit(pcs)
         ind = nn_.kneighbors(pcs, return_distance=False)
 
-        for i in range(pcs.shape[0]):
-            indices = ind[i,:][1:]
-            key = cells_for_knn[i]
-            names = np.array(cells_for_knn)[indices]
-            knns[key] = names
+        dict(zip(cells_for_knn, ind))
 
     return(knns)
 
