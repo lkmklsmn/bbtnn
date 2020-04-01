@@ -219,8 +219,6 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
     dataset = adata[cells_for_knn]
     pcs = dataset.obsm['X_pca']
 
-    knns = dict()
-
     if approx:
         dim = pcs.shape[1]
         num_elements = pcs.shape[0]
