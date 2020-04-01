@@ -229,14 +229,14 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
         p.set_ef(10)
         p.add_items(pcs)
         ind, distances = p.knn_query(pcs, k=k)
-        dict(zip(cells_for_knn, ind))
+        knns = dict(zip(cells_for_knn, ind))
 
     else:
         nn_ = NearestNeighbors(n_neighbors = k, p = 2)
         nn_.fit(pcs)
         ind = nn_.kneighbors(pcs, return_distance=False)
 
-        dict(zip(cells_for_knn, ind))
+        knns = dict(zip(cells_for_knn, ind))
 
     return(knns)
 
