@@ -131,8 +131,6 @@ class KnnTripletGenerator(Sequence):
 
         batch_indices = range(idx * self.batch_size, min((idx + 1) * self.batch_size, self.num_cells))
 
-        sample_weights = np.array(([1] * self.batch_size))
-
         triplet_batch = [self.knn_triplet_from_dictionary(row_index = row_index,
                                                           neighbour_list = self.dictionary[row_index],
                                                           batch = self.batch_list[row_index],
@@ -144,9 +142,8 @@ class KnnTripletGenerator(Sequence):
         triplet_batch = np.array(triplet_batch)
         placeholder_labels = self.placeholder_labels[:triplet_batch.shape[0]]
 
-        #return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels, sample_weights
-        return (triplet_batch[:, 0], placeholder_labels, sample_weights)
-
+        return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels
+        
     def knn_triplet_from_dictionary(self, row_index, neighbour_list, batch, num_cells):
         """ A random (unweighted) positive example chosen. """
         triplets = []
