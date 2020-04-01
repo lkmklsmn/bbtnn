@@ -227,14 +227,17 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
         p.set_ef(10)
         p.add_items(pcs)
         ind, distances = p.knn_query(pcs, k=k)
-        knns = dict(zip(cells_for_knn, ind))
+
+        names = list(map(lambda x: cells_for_knn[x], ind))
+        knns = dict(zip(cells_for_knn, names))
 
     else:
         nn_ = NearestNeighbors(n_neighbors = k, p = 2)
         nn_.fit(pcs)
         ind = nn_.kneighbors(pcs, return_distance=False)
 
-        knns = dict(zip(cells_for_knn, ind))
+        names = list(map(lambda x: cells_for_knn[x], ind))
+        knns = dict(zip(cells_for_knn, names))
 
     return(knns)
 
