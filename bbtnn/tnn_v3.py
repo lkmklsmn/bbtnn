@@ -464,7 +464,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
     dim = ds2.shape[1]
     num_elements = ds2.shape[0]
     p = hnswlib.Index(space='l2', dim=dim)
-    p.init_index(max_elements=num_elements, ef_construction=100, M = round(knn/2))
+    p.init_index(max_elements=num_elements, ef_construction=100, M = 16)
     p.set_ef(10)
     p.add_items(ds2)
     ind, distances = p.knn_query(ds1, k=knn)
