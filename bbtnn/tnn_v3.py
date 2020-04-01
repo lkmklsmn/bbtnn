@@ -95,10 +95,11 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
     # Define list of positives
     if(verbose > 0):
         print("Reorder")
-    triplet_list = []
-    for i in cells:
-        names = final_dict[i]
-        triplet_list.append([bdata.obs_names.get_loc(x) for x in names])
+    def get_indices(name):
+        return([bdata.obs_names.get_loc(j) for j in final_dict[name]])
+
+    triplet_list = list(map(get_indices, cells))
+    len(triplet_list)
 
     # Define unique batches to same negatives from
     batch_list = bdata.obs["batch"]
@@ -130,6 +131,7 @@ class KnnTripletGenerator(Sequence):
 
         batch_indices = range(idx * self.batch_size, min((idx + 1) * self.batch_size, self.num_cells))
 
+        sample_weights = np.array(([1] * self.batch_size))
 
         triplet_batch = [self.knn_triplet_from_dictionary(row_index = row_index,
                                                           neighbour_list = self.dictionary[row_index],
@@ -142,7 +144,8 @@ class KnnTripletGenerator(Sequence):
         triplet_batch = np.array(triplet_batch)
         placeholder_labels = self.placeholder_labels[:triplet_batch.shape[0]]
 
-        return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels
+        #return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels, sample_weights
+        return (triplet_batch[:, 0], placeholder_labels, sample_weights)
 
     def knn_triplet_from_dictionary(self, row_index, neighbour_list, batch, num_cells):
         """ A random (unweighted) positive example chosen. """
@@ -212,12 +215,15 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx
     return(mnns)
 
 
-def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, approx = True):
+def create_dictionary_knn(adata, cell_subset, k = 50, save_on_disk = True, approx = True):
 
     cell_names = adata.obs_names
 
-    dataset = adata[cells_for_knn]
+    dataset = adata[cell_subset]
     pcs = dataset.obsm['X_pca']
+
+    def get_names(ind):
+        return np.array(cell_subset)[ind]
 
     if approx:
         dim = pcs.shape[1]
@@ -228,16 +234,20 @@ def create_dictionary_knn(adata, cells_for_knn, k = 50, save_on_disk = True, app
         p.add_items(pcs)
         ind, distances = p.knn_query(pcs, k=k)
 
-        names = list(map(lambda x: cells_for_knn[x], ind))
-        knns = dict(zip(cells_for_knn, names))
+        cell_subset = np.array(cell_subset)
+        #names = list(map(get_names, ind))
+        #names = zip(cell_subset, list(ind))
+        #names =[np.array(cell_subset)[x] for x in ind]
+        names = list(map(lambda x: cell_subset[x], ind))
+        knns = dict(zip(cell_subset, names))
 
     else:
         nn_ = NearestNeighbors(n_neighbors = k, p = 2)
         nn_.fit(pcs)
         ind = nn_.kneighbors(pcs, return_distance=False)
 
-        names = list(map(lambda x: cells_for_knn[x], ind))
-        knns = dict(zip(cells_for_knn, names))
+        names = list(map(lambda x: cell_subset[x], ind))
+        knns = dict(zip(cell_subset, names))
 
     return(knns)
 
