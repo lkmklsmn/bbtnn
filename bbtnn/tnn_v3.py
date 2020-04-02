@@ -475,7 +475,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
     p.init_index(max_elements=num_elements, ef_construction=100, M = 16)
     p.set_ef(10)
     p.add_items(ds2)
-    ind,  = p.knn_query(ds1, k=knn)
+    ind,  distances = p.knn_query(ds1, k=knn)
 
     match = set()
     for a, b in zip(range(ds1.shape[0]), ind):
