@@ -95,11 +95,6 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
     # Define list of positives
     if(verbose > 0):
         print("Reorder")
-    def get_indices(name):
-        return([bdata.obs_names.get_loc(j) for j in final_dict[name]])
-
-    triplet_list = list(map(get_indices, cells))
-    len(triplet_list)
 
     # Define unique batches to same negatives from
     names_as_dict = dict(zip(list(bdata.obs_names), range(0, bdata.shape[0])))
