@@ -119,12 +119,13 @@ def generator_from_index(adata, Y,  batch_name, k = 20, k_to_m_ratio = 0.75, bat
     
     if Y is None:
         return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
-                               batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size), Y
+                               batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
 
     else:
-        Y = Y[[adata.obs_names.get_loc(j) for j in cells]]
-        return LabeledKnnTripletGenerator(X = adata.obsm["X_pca"], Y = Y,  dictionary = triplet_list,
-                               batch_list = batch_list, batch_indices = batch_indices,  batch_size=batch_size), Y
+        Y_new = Y[[adata.obs_names.get_loc(j) for j in cells]]
+        #Y = bdata.obs['Celltypes']
+        return LabeledKnnTripletGenerator(X = bdata.obsm["X_pca"], Y = Y_new,  dictionary = triplet_list,
+                               batch_list = batch_list, batch_indices = batch_indices,  batch_size=batch_size)
 
     
 
@@ -366,7 +367,7 @@ class TNN(BaseEstimator):
 
     def _fit(self, X, batch_name, Y=None, shuffle_mode=True):#, sample_weight = None):
 
-        datagen, Y = generator_from_index(X, Y, 
+        datagen  = generator_from_index(X, Y, 
                                         batch_name = batch_name,
                                         k_to_m_ratio = self.k_to_m_ratio,
                                        k=self.k,
