@@ -123,7 +123,7 @@ def generator_from_index(adata, batch_name, Y = None, k = 20, k_to_m_ratio = 0.7
         print("supervised gen")
         tmp = dict(zip(cell_names, Y))
         Y_new = [tmp[x] for x in cells]
-        Y_new = le.fit_transform(np.array(Y_new))
+        Y_new = le.fit_transform(Y_new)
         return LabeledKnnTripletGenerator(X = bdata.obsm["X_pca"], Y = Y_new, dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size = batch_size)
 
@@ -397,7 +397,7 @@ class TNN(BaseEstimator):
 
                 self.model_.compile(optimizer='adam', loss=triplet_loss_func)
             else:
-
+                Y = le.fit_transform(Y)
                 if is_categorical(self.supervision_metric):
                     if not is_multiclass(self.supervision_metric):
                         if not is_hinge(self.supervision_metric):
@@ -483,13 +483,11 @@ class TNN(BaseEstimator):
 
     def fit(self, X, batch_name, Y=None, shuffle_mode=True):
         """Fit model.
-
         Parameters
         ----------
         X : Anndata object to be embedded.
         batch_name : name of column in Anndata.obs containing batch information
         Y : Optional array for supervised dimentionality reduction.
-
         Returns
         -------
         returns an instance of self
@@ -499,12 +497,10 @@ class TNN(BaseEstimator):
 
     def fit_transform(self, X, batch_name, Y=None, shuffle_mode=True):
         """Fit to data then transform
-
         Parameters
         ----------
         X : Anndata object to be embedded.
         Y : Optional array for supervised dimentionality reduction.
-
         Returns
         -------
         X_new : transformed array, shape (n_samples, embedding_dims)
@@ -517,11 +513,9 @@ class TNN(BaseEstimator):
     def transform(self, X):
         """Transform X into the existing embedded space and return that
         transformed output.
-
         Parameters
         ----------
         X : Anndata object to be embedded.
-
         Returns
         -------
         X_new : array, shape (n_samples, embedding_dims)
