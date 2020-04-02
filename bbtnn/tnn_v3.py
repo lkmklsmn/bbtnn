@@ -102,12 +102,20 @@ def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_s
     len(triplet_list)
 
     # Define unique batches to same negatives from
+    names_as_dict = dict(zip(list(bdata.obs_names), range(0, bdata.shape[0])))
+    def get_indices2(name):
+      return([names_as_dict[x] for x in final_dict[name]])
+
+    triplet_list = list(map(get_indices2, cells))
+
     batch_list = bdata.obs["batch"]
     batch_indices = []
     for i in batch_list.unique():
         batch_indices.append(list(np.where(batch_list == i)[0]))
 
-    batch_list = [list(batch_list.unique()).index(i) for i in list(batch_list)]
+    batch_as_dict = dict(zip(list(batch_list.unique()), range(0, len(batch_list.unique()))))
+    tmp = map(lambda _: batch_as_dict[_], batch_list)
+    batch_list = list(tmp)
 
     return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
