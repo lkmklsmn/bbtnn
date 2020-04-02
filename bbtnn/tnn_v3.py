@@ -123,7 +123,8 @@ def generator_from_index(adata, batch_name, Y = None, k = 20, k_to_m_ratio = 0.7
         print("supervised gen")
         tmp = dict(zip(cell_names, Y))
         Y_new = [tmp[x] for x in cells]
-        return LabeledKnnTripletGenerator(X = bdata.obsm["X_pca"], Y = le.fit_transform(Y_new), dictionary = triplet_list,
+        Y_new = le.fit_transform(np.array(Y_new))
+        return LabeledKnnTripletGenerator(X = bdata.obsm["X_pca"], Y = Y_new, dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size = batch_size)
 
 
@@ -392,19 +393,91 @@ class TNN(BaseEstimator):
                     triplet_network(self.model_def,
                                     embedding_dims=self.embedding_dims)
 
-            self.model_.compile(optimizer='adam', loss=triplet_loss_func)
+            if Y is None:
+
+                self.model_.compile(optimizer='adam', loss=triplet_loss_func)
+            else:
+
+                if is_categorical(self.supervision_metric):
+                    if not is_multiclass(self.supervision_metric):
+                        if not is_hinge(self.supervision_metric):
+                            # Binary logistic classifier
+                            if len(Y.shape) > 1:
+                                self.n_classes = Y.shape[-1]
+                            else:
+                                self.n_classes = 1
+                            supervised_output = Dense(self.n_classes, activation='sigmoid',
+                                                      name='supervised')(anchor_embedding)
+                        else:
+                            # Binary Linear SVM output
+                            if len(Y.shape) > 1:
+                                self.n_classes = Y.shape[-1]
+                            else:
+                                self.n_classes = 1
+                            supervised_output = Dense(self.n_classes, activation='linear',
+                                                      name='supervised',
+                                                      kernel_regularizer=regularizers.l1(l1=0.01))(anchor_embedding)
+                    else:
+                        if not is_hinge(self.supervision_metric):
+                            validate_sparse_labels(Y)
+                            self.n_classes = len(np.unique(Y[Y != np.array(-1)]))
+                            # Softmax classifier
+                            supervised_output = Dense(self.n_classes, activation='softmax',
+                                                      name='supervised')(anchor_embedding)
+                        else:
+                            self.n_classes = len(np.unique(Y, axis=0))
+                            # Multiclass Linear SVM output
+                            supervised_output = Dense(self.n_classes, activation='linear',
+                                                      name='supervised',
+                                                      kernel_regularizer=regularizers.l1(l1=0.01))(anchor_embedding)
+                else:
+                    # Regression
+                    if len(Y.shape) > 1:
+                        self.n_classes = Y.shape[-1]
+                    else:
+                        self.n_classes = 1
+                    supervised_output = Dense(self.n_classes, activation='linear',
+                                              name='supervised')(anchor_embedding)
+
+                supervised_loss = keras.losses.get(self.supervision_metric)
+                if self.supervision_metric == 'sparse_categorical_crossentropy':
+                    supervised_loss = semi_supervised_loss(supervised_loss)
+
+                final_network = Model(inputs=self.model_.inputs,
+                                      outputs=[self.model_.output,
+                                               supervised_output])
+                self.model_ = final_network
+                self.model_.compile(
+                    optimizer='adam',
+                    loss={
+                        'stacked_triplets': triplet_loss_func,
+                        'supervised': supervised_loss
+                         },
+                    loss_weights={
+                        'stacked_triplets': 1 - self.supervision_weight,
+                        'supervised': self.supervision_weight})
+
+                # Store dedicated classification model
+                supervised_model_input = Input(shape=(X.obsm['X_pca'].shape[-1],))
+                embedding = self.model_.layers[3](supervised_model_input)
+                softmax_out = self.model_.layers[-1](embedding)
+
+                self.supervised_model_ = Model(supervised_model_input, softmax_out)
 
         self.encoder = self.model_.layers[3]
 
         if self.verbose > 0:
             print('Training neural network')
 
-        hist = self.model_.fit(datagen,
-                               epochs=self.epochs,
-                               callbacks=[callback for callback in self.callbacks] + [EarlyStopping(monitor=loss_monitor,patience=self.n_epochs_without_progress)],
-                               shuffle = shuffle_mode,
-                               workers = 10,
-                               verbose=self.verbose)
+        hist = self.model_.fit(
+            datagen,
+            epochs=self.epochs,
+            callbacks=[callback for callback in self.callbacks] +
+                      [EarlyStopping(monitor=loss_monitor,
+                       patience=self.n_epochs_without_progress)],
+            shuffle=shuffle_mode,
+            workers = 10,
+            verbose=self.verbose)
 
         self.loss_history_ += hist.history['loss']
 
@@ -431,7 +504,6 @@ class TNN(BaseEstimator):
         ----------
         X : Anndata object to be embedded.
         Y : Optional array for supervised dimentionality reduction.
-
 
         Returns
         -------
