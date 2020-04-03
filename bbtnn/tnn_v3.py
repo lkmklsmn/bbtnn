@@ -78,7 +78,7 @@ def generator_from_index(adata, batch_name, Y = None, k = 20, k_to_m_ratio = 0.7
 
     num_k = round(k_to_m_ratio * len(mnn_dict))
 
-    # Calculate KNNs for residual cells
+    # Calculate KNNs for subset of residual cells
     cells_for_knn = list(set(cell_names) - set(list(mnn_dict.keys())))
     if(len(cells_for_knn) > num_k):
         cells_for_knn = np.random.choice(cells_for_knn, num_k, replace = False)
@@ -115,12 +115,10 @@ def generator_from_index(adata, batch_name, Y = None, k = 20, k_to_m_ratio = 0.7
     batch_list = list(tmp)
 
     if Y is None:
-        print("knn gen")
         return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
 
     else:
-        print("supervised gen")
         tmp = dict(zip(cell_names, Y))
         Y_new = [tmp[x] for x in cells]
         Y_new = le.fit_transform(Y_new)
@@ -216,6 +214,7 @@ class LabeledKnnTripletGenerator(Sequence):
 
         return triplets
 
+
 def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx = True, verbose = 1):
 
     cell_names = adata.obs_names
@@ -230,19 +229,16 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx
         cells.append(cell_names[batch_list == i])
 
     mnns = dict()
-    #for i in range(len(datasets) - 1):
+
     for comb in list(itertools.combinations(range(len(cells)), 2)):
         i = comb[0]
         j = comb[1]
 
-        #j = i + 1
         if(verbose > 0):
             print('Processing datasets {}'.format((i, j)))
 
         new = list(cells[j])
         ref = list(cells[i])
-        #for x in range(j):
-        #    ref += list(cells[x])
 
         ds1 = adata[new].obsm['X_pca']
         ds2 = adata[ref].obsm['X_pca']
@@ -506,7 +502,6 @@ class TNN(BaseEstimator):
         X_new : transformed array, shape (n_samples, embedding_dims)
             Embedding of the new data in low-dimensional space.
         """
-
         self.fit(X, batch_name, Y, shuffle_mode)
         return self.transform(X)
 
@@ -521,7 +516,6 @@ class TNN(BaseEstimator):
         X_new : array, shape (n_samples, embedding_dims)
             Embedding of the new data in low-dimensional space.
         """
-
         embedding = self.encoder.predict(X.obsm['X_pca'], verbose=self.verbose)
         return embedding
 
@@ -538,12 +532,12 @@ class TNN(BaseEstimator):
         X_new : array, shape (n_samples, embedding_dims)
             Softmax class probabilities of the data.
         """
-
         if self.supervised_model_ is None:
             raise Exception("Model was not trained in classification mode.")
 
         softmax_output = self.supervised_model_.predict(X, verbose=self.verbose)
         return softmax_output
+
 
 def semi_supervised_loss(loss_function):
     def new_loss_function(y_true, y_pred):
@@ -556,11 +550,13 @@ def semi_supervised_loss(loss_function):
     new_func.__name__ = loss_function.__name__
     return new_func
 
+
 def validate_sparse_labels(Y):
     if not zero_indexed(Y):
         raise ValueError('Ensure that your labels are zero-indexed')
     if not consecutive_indexed(Y):
         raise ValueError('Ensure that your labels are indexed consecutively')
+
 
 def zero_indexed(Y):
     if min(abs(Y)) != 0:
@@ -574,6 +570,7 @@ def consecutive_indexed(Y):
     if max(Y) >= n_classes:
         return False
     return True
+
 
 def nn_approx(ds1, ds2, names1, names2, knn=50):
     dim = ds2.shape[1]
@@ -591,6 +588,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
 
     return match
 
+
 def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
     nn_ = NearestNeighbors(knn, p=metric_p)
@@ -603,6 +601,7 @@ def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
             match.add((names1[a], names2[b_i]))
 
     return match
+
 
 def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
     """ Assumes that Y is zero-indexed. """
@@ -627,6 +626,7 @@ def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 5
             match.add((names1[a], names2[b_i]))
 
     return match
+
 
 def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True, approx = True):
     # Find nearest neighbors in first direction.
