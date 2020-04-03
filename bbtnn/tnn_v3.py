@@ -68,6 +68,8 @@ def base_network(input_shape):
 def generator_from_index(adata, batch_name, Y = None, k = 20, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
                          save_on_disk = True, approx = True, verbose=1):
 
+    print('version 02.04. 21:30')
+
     # Calculate MNNs by pairwise comparison between batches
     cell_names = adata.obs_names
     if(verbose > 0):
