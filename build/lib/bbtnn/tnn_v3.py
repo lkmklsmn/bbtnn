@@ -46,6 +46,10 @@ import networkx as nx
 
 import hnswlib
 
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+from sklearn import metrics
+
 def base_network(input_shape):
     '''Base network to be shared (eq. to feature extraction).
     '''
@@ -61,62 +65,111 @@ def base_network(input_shape):
     return Model(inputs, x)
 
 
-def generator_from_index(adata, batch_name, k = 20, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
+def generator_from_index(adata, batch_name, celltype_name, mask_batch=None, cell_labeled=None, Y = None, k = 20, label_ratio = 0.8, k_to_m_ratio = 0.75, batch_size = 32, search_k=-1,
                          save_on_disk = True, approx = True, verbose=1):
 
+    print('version 02.04. 21:30')
+
     # Calculate MNNs by pairwise comparison between batches
-    cell_names = adata.obs_names
+    
+    cells = adata.obs_names
+    
     if(verbose > 0):
         print("Calculating MNNs...")
-    mnn_dict = create_dictionary_mnn(adata, batch_name, k = k, save_on_disk = save_on_disk, approx = approx, verbose = verbose)
+           
+    mnn_dict = create_dictionary_mnn(adata, batch_name=batch_name, k = k, save_on_disk = save_on_disk, approx = approx, verbose = verbose)
+    
     if(verbose > 0):
         print(str(len(mnn_dict)) + " cells defined as MNNs")
+        
+    if cell_labeled == False:
+        label_dict=dict()
+    else:
+        
+        if (verbose > 0):
+            print ('Generating supervised positive pairs...')
 
+        label_dict_original = create_dictionary_label(adata, batch_name=batch_name, celltype_name=celltype_name, mask_batch=mask_batch,  k=k, verbose=verbose)
+        num_label = round(label_ratio * len(label_dict_original))
+
+        cells_for_label = np.random.choice(list(label_dict_original.keys()), num_label, replace = False)
+
+        label_dict = {key: value for key, value in label_dict_original.items() if key in cells_for_label}
+
+        if(verbose > 0):
+            print(str(len(label_dict.keys())) + " cells defined as supervision triplets")
+
+        print (len(set(mnn_dict.keys())&set(label_dict.keys())))
+
+    
     num_k = round(k_to_m_ratio * len(mnn_dict))
 
-    # Calculate KNNs for residual cells
-    cells_for_knn = list(set(cell_names) - set(list(mnn_dict.keys())))
+    # Calculate KNNs for subset of residual cells
+    cells_for_knn = list(set(cells) - set(list(label_dict.keys()))| set(list(mnn_dict.keys())))
     if(len(cells_for_knn) > num_k):
         cells_for_knn = np.random.choice(cells_for_knn, num_k, replace = False)
 
     if(verbose > 0):
-        print("Calculating KNNs")
-    knn_dict = create_dictionary_knn(adata, cells_for_knn, k = k, save_on_disk = save_on_disk, approx = approx)
+        print("Calculating KNNs...")
+           
+    cdata = adata[cells_for_knn]
+    knn_dict = create_dictionary_knn(cdata, cells_for_knn, k = k, save_on_disk = save_on_disk, approx = approx)
     if(verbose > 0):
         print(str(len(cells_for_knn)) + " cells defined as KNNs")
 
-    final_dict = mnn_dict
+    final_dict = merge_dict(mnn_dict, label_dict)
     final_dict.update(knn_dict)
 
-    cells = list(final_dict.keys())
+    
+    cells_for_train = list(final_dict.keys())
+    print ('Total cells for training:'+ str(len(cells_for_train)))
 
-    bdata = adata[cells]
+    ddata = adata[cells_for_train]
 
-    # Define list of positives
+    # Reorder triplet list according to cells
     if(verbose > 0):
         print("Reorder")
-    def get_indices(name):
-        return([bdata.obs_names.get_loc(j) for j in final_dict[name]])
+    names_as_dict = dict(zip(list(adata.obs_names), range(0, adata.shape[0])))
+    def get_indices2(name):
+          return([names_as_dict[x] for x in final_dict[name]])
 
-    triplet_list = list(map(get_indices, cells))
-    len(triplet_list)
-
-    # Define unique batches to same negatives from
-    batch_list = bdata.obs["batch"]
+    triplet_list = list(map(get_indices2, cells_for_train))
+    
+    batch_list = ddata.obs[batch_name]
     batch_indices = []
     for i in batch_list.unique():
         batch_indices.append(list(np.where(batch_list == i)[0]))
 
-    batch_list = [list(batch_list.unique()).index(i) for i in list(batch_list)]
+    batch_as_dict = dict(zip(list(batch_list.unique()), range(0, len(batch_list.unique()))))
+    tmp = map(lambda _: batch_as_dict[_], batch_list)
+    batch_list = list(tmp)
 
-    return KnnTripletGenerator(X = bdata.obsm["X_pca"], dictionary = triplet_list,
+    if Y is None:
+        return KnnTripletGenerator(X = ddata.obsm["X_pca"], X1 = adata.obsm['X_pca'], dictionary = triplet_list,
                                batch_list = batch_list, batch_indices = batch_indices, batch_size=batch_size)
+
+    else:
+        tmp = dict(zip(cells, Y))
+        Y_new = [tmp[x] for x in cells_for_train]
+        Y_new = le.fit_transform(Y_new)
+        return LabeledKnnTripletGenerator(X = ddata.obsm["X_pca"], X1 = adata.obsm['X_pca'], Y = Y_new, dictionary = triplet_list,
+                               batch_list = batch_list, batch_indices = batch_indices, batch_size = batch_size)
+
+
+def merge_dict(x,y):
+    for k,v in x.items():
+                if k in y.keys():
+                    y[k] += v
+                else:
+                    y[k] = v
+    return y
 
 
 class KnnTripletGenerator(Sequence):
 
-    def __init__(self, X, dictionary, batch_list, batch_indices, batch_size=32):
+    def __init__(self, X, X1, dictionary, batch_list, batch_indices, batch_size=32):
         self.X = X
+        self.X1 = X1
         self.batch_list = batch_list
         self.batch_indices = batch_indices
         self.batch_size = batch_size
@@ -143,22 +196,109 @@ class KnnTripletGenerator(Sequence):
         placeholder_labels = self.placeholder_labels[:triplet_batch.shape[0]]
 
         return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), placeholder_labels
-        
+
     def knn_triplet_from_dictionary(self, row_index, neighbour_list, batch, num_cells):
         """ A random (unweighted) positive example chosen. """
         triplets = []
 
         anchor = row_index
         positive = np.random.choice(neighbour_list)
-
-        #negative = np.random.randint(self.num_cells)
         negative = self.batch_indices[batch][np.random.randint(len(self.batch_indices[batch]))]
-        #negative = np.random.choice(self.batch_indices[batch])
 
-        triplets += [self.X[anchor], self.X[positive],
-                     self.X[negative]]
+        triplets += [self.X[anchor], self.X1[positive],
+                     self.X1[negative]]
 
         return triplets
+
+
+class LabeledKnnTripletGenerator(Sequence):
+    def __init__(self, X, X1, Y, dictionary, batch_list, batch_indices, batch_size=32):
+        self.X = X
+        self.X1 = X1
+        self.Y = Y
+        self.batch_list = batch_list
+        self.batch_indices = batch_indices
+        self.batch_size = batch_size
+        self.dictionary = dictionary
+        self.num_cells = len(self.dictionary)
+
+    def __len__(self):
+        return int(np.ceil(len(self.dictionary) / float(self.batch_size)))
+
+    def __getitem__(self, idx):
+
+        batch_indices = range(idx * self.batch_size, min((idx + 1) * self.batch_size, self.num_cells))
+
+        triplet_batch = [self.knn_triplet_from_dictionary(row_index = row_index,
+                                                          neighbour_list = self.dictionary[row_index],
+                                                          batch = self.batch_list[row_index],
+                                                          num_cells = self.num_cells) for row_index in batch_indices]
+
+        if (issparse(self.X)):
+            triplet_batch = [[e.toarray()[0] for e in t] for t in triplet_batch]
+
+        triplet_batch = np.array(triplet_batch)
+        label_batch = self.Y[batch_indices]
+
+        return tuple([triplet_batch[:, 0], triplet_batch[:, 1], triplet_batch[:, 2]]), tuple([np.array(label_batch), np.array(label_batch)])
+
+    def knn_triplet_from_dictionary(self, row_index, neighbour_list, batch, num_cells):
+        """ A random (unweighted) positive example chosen. """
+        triplets = []
+
+        anchor = row_index
+        
+        positive = np.random.choice(neighbour_list)
+        negative = self.batch_indices[batch][np.random.randint(len(self.batch_indices[batch]))]
+
+        triplets += [self.X[anchor], self.X1[positive],
+                     self.X1[negative]]
+
+
+        return triplets
+
+
+def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, verbose=1):
+    
+    #cell_names = adata.obs_names
+    adata = bdata[bdata.obs[batch_name]!=mask_batch]
+    batch_list = adata.obs[batch_name]
+    cell_types = adata.obs[celltype_name]
+
+    print (batch_list.unique())
+    
+    types = []
+    for i in batch_list.unique():
+        types.append(cell_types[batch_list == i])
+
+    print (len(types))
+    
+    labeled_dict = dict()
+
+    for comb in list(itertools.combinations(range(len(types)), 2)):
+
+        i = comb[0]
+        j = comb[1]
+    
+        if(verbose > 0):
+            print('Processing positive pairs {}'.format((i, j)))
+
+        ref_types = types[i]
+        new_types = types[j]
+        common = set(ref_types) & set(new_types)
+        
+        pairs =[]
+        for each in common:
+            ref = list(ref_types[ref_types==each].index)
+            new = list(new_types[new_types==each].index)
+            
+            num_k =min(int(k/10), 5,len(new))
+            
+            for key in ref:
+                new_cells = np.random.choice(new, num_k, replace = False)
+                labeled_dict[key] = list(new_cells)     
+ 
+    return(labeled_dict)
 
 
 def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx = True, verbose = 1):
@@ -175,19 +315,16 @@ def create_dictionary_mnn(adata, batch_name, k = 50, save_on_disk = True, approx
         cells.append(cell_names[batch_list == i])
 
     mnns = dict()
-    #for i in range(len(datasets) - 1):
+
     for comb in list(itertools.combinations(range(len(cells)), 2)):
         i = comb[0]
         j = comb[1]
 
-        #j = i + 1
         if(verbose > 0):
             print('Processing datasets {}'.format((i, j)))
 
         new = list(cells[j])
-        ref = []
-        for x in range(j):
-            ref += list(cells[x])
+        ref = list(cells[i])
 
         ds1 = adata[new].obsm['X_pca']
         ds2 = adata[ref].obsm['X_pca']
@@ -232,9 +369,6 @@ def create_dictionary_knn(adata, cell_subset, k = 50, save_on_disk = True, appro
         ind, distances = p.knn_query(pcs, k=k)
 
         cell_subset = np.array(cell_subset)
-        #names = list(map(get_names, ind))
-        #names = zip(cell_subset, list(ind))
-        #names =[np.array(cell_subset)[x] for x in ind]
         names = list(map(lambda x: cell_subset[x], ind))
         knns = dict(zip(cell_subset, names))
 
@@ -249,15 +383,16 @@ def create_dictionary_knn(adata, cell_subset, k = 50, save_on_disk = True, appro
     return(knns)
 
 
-class TNN(BaseEstimator):
+class BBTNN(BaseEstimator):
 
     def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=64,
                  epochs=1000, n_epochs_without_progress=20,
                  margin=1, ntrees=50, search_k=-1,
                  precompute=True, save_on_disk=True,
-                 k_to_m_ratio = 0.75,
+                 k_to_m_ratio = 0.6,
+                 label_ratio=0.8,
                  supervision_metric='sparse_categorical_crossentropy',
-                 supervision_weight=0.5, annoy_index_path=None,
+                 supervision_weight=0.3, annoy_index_path=None,
                  approx = True,
                  #sample_weight = None,
                  callbacks=[], build_index_on_disk=None, verbose=1):
@@ -276,6 +411,7 @@ class TNN(BaseEstimator):
         self.model_ = None
         self.encoder = None
         self.k_to_m_ratio = k_to_m_ratio
+        self.label_ratio = label_ratio
         self.approx = approx
         self.supervision_metric = supervision_metric
         self.supervision_weight = supervision_weight
@@ -310,11 +446,16 @@ class TNN(BaseEstimator):
             state['model_def'] = None
         return state
 
-    def _fit(self, X, batch_name, Y=None, shuffle_mode=True):#, sample_weight = None):
+    def _fit(self, X, batch_name, celltype_name=None, mask_batch=None, cell_labeled=None, Y=None, shuffle_mode=True):
 
         datagen = generator_from_index(X,
                                         batch_name = batch_name,
+                                        celltype_name = celltype_name,
+                                        mask_batch=mask_batch,
+                                       cell_labeled = cell_labeled, 
+                                        Y = Y,
                                         k_to_m_ratio = self.k_to_m_ratio,
+                                       label_ratio = self.label_ratio,
                                        k=self.k,
                                        batch_size=self.batch_size,
                                        search_k=self.search_k,
@@ -340,76 +481,133 @@ class TNN(BaseEstimator):
                     triplet_network(self.model_def,
                                     embedding_dims=self.embedding_dims)
 
-            self.model_.compile(optimizer='adam', loss=triplet_loss_func)
+            if Y is None:
+
+                self.model_.compile(optimizer='adam', loss=triplet_loss_func)
+            else:
+                Y = le.fit_transform(Y)
+                if is_categorical(self.supervision_metric):
+                    if not is_multiclass(self.supervision_metric):
+                        if not is_hinge(self.supervision_metric):
+                            # Binary logistic classifier
+                            if len(Y.shape) > 1:
+                                self.n_classes = Y.shape[-1]
+                            else:
+                                self.n_classes = 1
+                            supervised_output = Dense(self.n_classes, activation='sigmoid',
+                                                      name='supervised')(anchor_embedding)
+                        else:
+                            # Binary Linear SVM output
+                            if len(Y.shape) > 1:
+                                self.n_classes = Y.shape[-1]
+                            else:
+                                self.n_classes = 1
+                            supervised_output = Dense(self.n_classes, activation='linear',
+                                                      name='supervised',
+                                                      kernel_regularizer=regularizers.l1(l1=0.01))(anchor_embedding)
+                    else:
+                        if not is_hinge(self.supervision_metric):
+                            validate_sparse_labels(Y)
+                            self.n_classes = len(np.unique(Y[Y != np.array(-1)]))
+                            # Softmax classifier
+                            supervised_output = Dense(self.n_classes, activation='softmax',
+                                                      name='supervised')(anchor_embedding)
+                        else:
+                            self.n_classes = len(np.unique(Y, axis=0))
+                            # Multiclass Linear SVM output
+                            supervised_output = Dense(self.n_classes, activation='linear',
+                                                      name='supervised',
+                                                      kernel_regularizer=regularizers.l1(l1=0.01))(anchor_embedding)
+                else:
+                    # Regression
+                    if len(Y.shape) > 1:
+                        self.n_classes = Y.shape[-1]
+                    else:
+                        self.n_classes = 1
+                    supervised_output = Dense(self.n_classes, activation='linear',
+                                              name='supervised')(anchor_embedding)
+
+                supervised_loss = keras.losses.get(self.supervision_metric)
+                if self.supervision_metric == 'sparse_categorical_crossentropy':
+                    supervised_loss = semi_supervised_loss(supervised_loss)
+
+                final_network = Model(inputs=self.model_.inputs,
+                                      outputs=[self.model_.output,
+                                               supervised_output])
+                self.model_ = final_network
+                self.model_.compile(
+                    optimizer='adam',
+                    loss={
+                        'stacked_triplets': triplet_loss_func,
+                        'supervised': supervised_loss
+                         },
+                    loss_weights={
+                        'stacked_triplets': 1 - self.supervision_weight,
+                        'supervised': self.supervision_weight})
+
+                # Store dedicated classification model
+                supervised_model_input = Input(shape=(X.obsm['X_pca'].shape[-1],))
+                embedding = self.model_.layers[3](supervised_model_input)
+                softmax_out = self.model_.layers[-1](embedding)
+
+                self.supervised_model_ = Model(supervised_model_input, softmax_out)
 
         self.encoder = self.model_.layers[3]
 
         if self.verbose > 0:
             print('Training neural network')
 
-        hist = self.model_.fit(datagen,
-                               epochs=self.epochs,
-                               callbacks=[callback for callback in self.callbacks] + [EarlyStopping(monitor=loss_monitor,patience=self.n_epochs_without_progress)],
-                               shuffle = shuffle_mode,
-                               workers = 10,
-                               #sample_weight = sample_weight,
-                               verbose=self.verbose)
+        hist = self.model_.fit(
+            datagen,
+            epochs=self.epochs,
+            callbacks=[callback for callback in self.callbacks] +
+                      [EarlyStopping(monitor=loss_monitor,
+                       patience=self.n_epochs_without_progress)],
+            shuffle=shuffle_mode,
+            workers = 10,
+            verbose=self.verbose)
 
         self.loss_history_ += hist.history['loss']
 
-    def fit(self, X, batch_name, Y=None, shuffle_mode=True):#, sample_weight = None):
+    def fit(self, X, batch_name, celltype_name=None, mask_batch=None, cell_labeled=False,  Y=None, shuffle_mode=True):
         """Fit model.
-
         Parameters
         ----------
-        X : array, shape (n_samples, n_features)
-            Data to be embedded.
-        Y : array, shape (n_samples)
-            Optional array for supervised dimentionality reduction.
-
+        X : Anndata object to be embedded.
+        batch_name : name of column in Anndata.obs containing batch information
+        Y : Optional array for supervised dimentionality reduction.
         Returns
         -------
         returns an instance of self
         """
-        self._fit(X, batch_name, Y, shuffle_mode = shuffle_mode)#, sample_weight = sample_weight)
+        self._fit(X, batch_name, celltype_name, mask_batch, cell_labeled, Y, shuffle_mode = shuffle_mode)
         return self
 
-    def fit_transform(self, X, batch_name, Y=None, shuffle_mode=True):
+    def fit_transform(self, X, batch_name, celltype_name=None, mask_batch=None, cell_labeled=None, Y=None, shuffle_mode=True):
         """Fit to data then transform
-
         Parameters
         ----------
-        X : array, shape (n_samples, n_features)
-            Data to be embedded.
-        Y : array, shape (n_samples)
-            Optional array for supervised dimentionality reduction.
-
-
+        X : Anndata object to be embedded.
+        Y : Optional array for supervised dimentionality reduction.
         Returns
         -------
         X_new : transformed array, shape (n_samples, embedding_dims)
             Embedding of the new data in low-dimensional space.
         """
-
-        self.fit(X, batch_name, Y, shuffle_mode)
+        self.fit(X, batch_name, celltype_name,  mask_batch, Y, shuffle_mode)
         return self.transform(X)
 
     def transform(self, X):
         """Transform X into the existing embedded space and return that
         transformed output.
-
-
         Parameters
         ----------
-        X : array, shape (n_samples, n_features)
-            New data to be transformed.
-
+        X : Anndata object to be embedded.
         Returns
         -------
         X_new : array, shape (n_samples, embedding_dims)
             Embedding of the new data in low-dimensional space.
         """
-
         embedding = self.encoder.predict(X.obsm['X_pca'], verbose=self.verbose)
         return embedding
 
@@ -426,12 +624,12 @@ class TNN(BaseEstimator):
         X_new : array, shape (n_samples, embedding_dims)
             Softmax class probabilities of the data.
         """
-
         if self.supervised_model_ is None:
             raise Exception("Model was not trained in classification mode.")
 
         softmax_output = self.supervised_model_.predict(X, verbose=self.verbose)
         return softmax_output
+
 
 def semi_supervised_loss(loss_function):
     def new_loss_function(y_true, y_pred):
@@ -444,11 +642,13 @@ def semi_supervised_loss(loss_function):
     new_func.__name__ = loss_function.__name__
     return new_func
 
+
 def validate_sparse_labels(Y):
     if not zero_indexed(Y):
         raise ValueError('Ensure that your labels are zero-indexed')
     if not consecutive_indexed(Y):
         raise ValueError('Ensure that your labels are indexed consecutively')
+
 
 def zero_indexed(Y):
     if min(abs(Y)) != 0:
@@ -463,14 +663,15 @@ def consecutive_indexed(Y):
         return False
     return True
 
+
 def nn_approx(ds1, ds2, names1, names2, knn=50):
     dim = ds2.shape[1]
     num_elements = ds2.shape[0]
     p = hnswlib.Index(space='l2', dim=dim)
-    p.init_index(max_elements=num_elements, ef_construction=100, M = round(knn/2))
+    p.init_index(max_elements=num_elements, ef_construction=100, M = 16)
     p.set_ef(10)
     p.add_items(ds2)
-    ind, distances = p.knn_query(ds1, k=knn)
+    ind,  distances = p.knn_query(ds1, k=knn)
 
     match = set()
     for a, b in zip(range(ds1.shape[0]), ind):
@@ -478,6 +679,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
             match.add((names1[a], names2[b_i]))
 
     return match
+
 
 def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
@@ -491,6 +693,7 @@ def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
             match.add((names1[a], names2[b_i]))
 
     return match
+
 
 def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 50, save_on_disk = True):
     """ Assumes that Y is zero-indexed. """
@@ -515,6 +718,7 @@ def nn_annoy(ds1, ds2, names1, names2, knn = 20, metric='euclidean', n_trees = 5
             match.add((names1[a], names2[b_i]))
 
     return match
+
 
 def mnn(ds1, ds2, names1, names2, knn = 20, save_on_disk = True, approx = True):
     # Find nearest neighbors in first direction.
