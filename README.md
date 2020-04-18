@@ -10,9 +10,9 @@ The bbtnn calculates a deep integrated embedding for scRNA-seq data. With bbtnn,
 
 
 # Check out out live tutorial!
-The following [Google colab](https://colab.research.google.com/) notebooks allow you to interactively explore BBTNN and can be run within your browser. We have prepared two analysis examples:
+The following notebooks allow you to interactively explore BBTNN and can be run within your browser. We have prepared two analysis examples:
 1. [Simulation dataset](https://colab.research.google.com/github/lkmklsmn/...)
-2. [Pancreas dataset](https://colab.research.google.com/github/lkmklsmn/)
+2. [Pancreas dataset](https://github.com/lkmklsmn/bbtnn/tree/master/examples/TNN_pancreas_comparison.ipynb)
 
 # Installation
 
