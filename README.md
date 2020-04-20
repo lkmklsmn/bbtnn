@@ -7,10 +7,13 @@ The bbtnn calculates a deep integrated embedding for scRNA-seq data. With bbtnn,
 
 * Integrate scRNA-seq datasets across batches with/without labels.
 * Build a low-dimensional representation of the scRNA-seq data.
+* Accurately predict cell types for an independent scRNAseq dataset.
+* Integration of millions of cells on personal computers.
+
 
 
 ## Check out out live tutorial!
-The following notebooks allow you to interactively explore BBTNN and can be run within your browser. We have prepared two analysis examples:
+The following notebooks allow you to interactively explore bbtnn and can be run within your browser. We have prepared two analysis examples:
 1. [Simulation dataset](https://github.com/lkmklsmn/bbtnn/tree/master/examples/TNN_Simulation.ipynb)
 2. [Pancreas dataset](https://github.com/lkmklsmn/bbtnn/tree/master/examples/TNN_pancreas_comparison.ipynb)
 
