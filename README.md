@@ -7,14 +7,17 @@ The bbtnn calculates a deep integrated embedding for scRNA-seq data. With bbtnn,
 
 * Integrate scRNA-seq datasets across batches with/without labels.
 * Build a low-dimensional representation of the scRNA-seq data.
+* Accurately predict cell types for an independent scRNAseq dataset.
+* Integration of millions of cells on personal computers.
 
 
-# Check out out live tutorial!
-The following [Google colab](https://colab.research.google.com/) notebooks allow you to interactively explore BBTNN and can be run within your browser. We have prepared two analysis examples:
-1. [Simulation dataset](https://colab.research.google.com/github/lkmklsmn/...)
-2. [Pancreas dataset](https://colab.research.google.com/github/lkmklsmn/)
 
-# Installation
+## Check out out live tutorial!
+The following notebooks allow you to interactively explore bbtnn and can be run within your browser. We have prepared two analysis examples:
+1. [Simulation dataset](https://github.com/lkmklsmn/bbtnn/tree/master/examples/TNN_Simulation.ipynb)
+2. [Pancreas dataset](https://github.com/lkmklsmn/bbtnn/tree/master/examples/TNN_pancreas_comparison.ipynb)
+
+## Installation
 
 To install **bbtnn**, you must make sure that your python version is 3.x.x. 
 
@@ -37,23 +40,23 @@ git clone http://github.com/lkmklsmn/bbtnn
 cd bbtnn
 pip install .
 ```
-# Input
-## Unsupervised model
+## Input
+### Unsupervised model
 1. Adata with PCs
 2. Batch name
 
-## Label supervised model (Triplet generated based on the known labels)
+### Label supervised model (Triplet generated based on the known labels)
 1. Adata with PCs
 2. Batch name
 3. Celltype name
 
-# Result
+## Result
 1. Coordinates for the embedding layer 
 2. Visualization of the embedding layer
 
 
-# Usage
-## Unsupervised model
+## Usage
+### Unsupervised model
 
 ```alias
 from bbtnn.tnn_v3 import BBTNN
@@ -61,12 +64,12 @@ model = BBTNN(k=50, distance='pn', batch_size=32, n_epochs_without_progress=10, 
 model.fit(X = adata, Y = None, batch_name='batch')
 ```
 
-## Supervised model
+### Supervised model
 ```alias
 model = BBTNN(k=50, distance='pn', batch_size=64, n_epochs_without_progress=10, approx = False)
 model.fit(X = adata, Y = None, batch_name='batch', celltype_name='Celltypes', cell_labeled = True)
 ```
-## Semi-supervised model
+### Semi-supervised model
 
 ```alias
 model = BBTNN(k=50, distance='pn', batch_size=64, n_epochs_without_progress=10, approx = False)
