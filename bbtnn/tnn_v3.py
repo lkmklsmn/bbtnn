@@ -295,7 +295,11 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
             
             for key in ref:
                 new_cells = np.random.choice(new, num_k, replace = False)
-                labeled_dict[key] = list(new_cells)     
+                if key not in labeled_dict.keys():
+                    
+                    labeled_dict[key] = list(new_cells)     
+                else:
+                    labeled_dict[key] += list(new_cells)
  
     return(labeled_dict)
 
