@@ -383,7 +383,7 @@ def create_dictionary_knn(adata, cell_subset, k = 50, save_on_disk = True, appro
     return(knns)
 
 
-class BBTNN(BaseEstimator):
+class TNN(BaseEstimator):
 
     def __init__(self, embedding_dims=2, k=150, distance='pn', batch_size=64,
                  epochs=1000, n_epochs_without_progress=20,
