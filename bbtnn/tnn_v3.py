@@ -275,7 +275,7 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
     
     labeled_dict = dict()
 
-    for comb in list(itertools.combinations(range(len(types)), 2)):
+    for comb in list(itertools.permutations(range(len(types)), 2)):
 
         i = comb[0]
         j = comb[1]
