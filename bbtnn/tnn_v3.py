@@ -286,8 +286,7 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
         ref_types = types[i]
         new_types = types[j]
         common = set(ref_types) & set(new_types)
-        
-        pairs =[]
+
         for each in common:
             ref = list(ref_types[ref_types==each].index)
             new = list(new_types[new_types==each].index)
