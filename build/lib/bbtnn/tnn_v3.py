@@ -275,7 +275,7 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
 
     labeled_dict = dict()
 
-    for comb in list(itertools.combinations(range(len(types)), 2)):
+    for comb in list(itertools.permutations(range(len(types)), 2)):
 
         i = comb[0]
         j = comb[1]
@@ -287,7 +287,6 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
         new_types = types[j]
         common = set(ref_types) & set(new_types)
 
-        pairs =[]
         for each in common:
             ref = list(ref_types[ref_types==each].index)
             new = list(new_types[new_types==each].index)
@@ -296,7 +295,11 @@ def create_dictionary_label(bdata, batch_name, mask_batch, celltype_name, k=50, 
 
             for key in ref:
                 new_cells = np.random.choice(new, num_k, replace = False)
-                labeled_dict[key] = list(new_cells)
+                if key not in labeled_dict.keys():
+
+                    labeled_dict[key] = list(new_cells)
+                else:
+                    labeled_dict[key] += list(new_cells)
 
     return(labeled_dict)
 
